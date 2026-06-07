@@ -1,8 +1,7 @@
 # AGENTS.md — working agreements for `orca_clj`
 
 Invariants and workflow for anyone (human or agent) working in this project.
-Companion to `README.md` (setup) and `../porting.md` (the original build plan
-and decision log). Read all three before starting.
+Companion to `README.md` (setup); read both before starting.
 
 ## Stack
 
@@ -28,8 +27,7 @@ tablecloth/dtype-next (data), CmdStan via `orca.stan` (MCMC), `commons-suncalc`
 3. **The two blog posts are the source of truth for the *method*.**
    `blogpost/methodology.html` + `index.html` describe the current method and the
    modeling decisions. Where an implementation choice diverges from a naive
-   reading, the rationale is recorded in `porting.md §6`; don't silently "fix"
-   the science.
+   reading it is deliberate; don't silently "fix" the science.
 
 ## Clojure workflow (REPL-driven)
 
@@ -63,7 +61,7 @@ tablecloth/dtype-next (data), CmdStan via `orca.stan` (MCMC), `commons-suncalc`
 
 `clojure -X:test` (cognitect test-runner, `:test` alias). Pure functions are
 unit-tested against hand-computed / known reference values. Heavy MCMC paths
-must run end-to-end at least once per phase.
+must run end-to-end at least once whenever the code path they exercise changes.
 
 ## CmdStan notes
 
@@ -86,47 +84,3 @@ must run end-to-end at least once per phase.
   ArviZ's PSIS-LOO (simpler, no Pareto tail fit); validated on M3-vs-M4 ordering.
 - `orca.stan/sample-chains` returns **per-chain** datasets (needed for R̂/ESS);
   `sample` pools them. Use `sample-chains` when diagnostics matter.
-
-## Phase discipline & execution model (goal-driven, subagent-per-phase)
-
-Follow `porting.md §8`'s phased sequence. This port runs under a standing
-**goal**, not a hands-on interactive session:
-
-- The **main context is the orchestrator** — it holds the plan, dispatches work,
-  runs the reviews, and records progress in `orca-clj-porting-progress.md`. It does
-  *not* itself write the bulk of each phase's code.
-- Each phase is executed by a **fresh sequential subagent** (its own context
-  window) so a phase's working memory never crowds the orchestrator. A phase
-  subagent reads `porting.md` + this file + the progress memory, does the phase,
-  gets reviewed (below), addresses the review, and reports back; the orchestrator
-  then updates the progress memory and dispatches the next phase.
-- This **replaces the old "clear the context after each phase" rule** — same
-  intent (no stale phase state), but the orchestrator's context is preserved for
-  continuity across phases.
-
-## Code-review panel (after every phase, and once over the whole system)
-
-After a phase's code is written, formatted, linted clean and tests are green, run
-a **review panel before moving on**. Launch the reviewers as **separate
-subagents**, each adopting (LARPing) one voice and reading the phase's diff
-through their lens:
-
-- **Rich Hickey** — simplicity over ease; is anything *complected*? data over
-  syntax, values/immutability, naming, no incidental complexity or needless state.
-- **Alex Miller** — idiomatic Clojure & core tooling; deps/aliases, `clojure.core`
-  fit, library/API shape, practical correctness, no reinvented wheels.
-- **Zachary Tellman** (*Elements of Clojure*) — naming precision, composition vs
-  indirection, error/edge handling, robustness, where abstraction boundaries fall.
-- **Daniel Slutsky** — scicloj/data-science idioms; tablecloth/dtype-next usage,
-  numerical correctness, column semantics, would this read well in a noj notebook.
-- **Richard McElreath** (*Statistical Rethinking*) — the *science*: priors, model
-  criticism, causal/adjustment validity, diagnostics, whether the stats actually
-  support what the code claims.
-
-Collect the findings, decide what to act on (record any skip with a reason), apply
-fixes, then re-lint and re-test. Only then is the phase done.
-
-**Final whole-system pass:** after all phases are complete, run the **same panel
-once more over the entire `orca_clj` system** (not a single diff) — architecture,
-cross-namespace consistency, and the science end-to-end — and address what it
-finds. This is `porting.md §8`'s **Phase F**.

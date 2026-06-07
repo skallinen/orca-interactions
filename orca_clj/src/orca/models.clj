@@ -1,5 +1,5 @@
 (ns orca.models
-  "The M0–M4 model ladder (porting.md §4.5; methodology §4).
+  "The M0–M4 model ladder (methodology §4).
 
    Five logistic-regression models of increasing complexity, all fit with
    CmdStan via `orca.stan` against the prepared data (`orca.prepare`):
@@ -378,7 +378,7 @@
   [& [{:keys [opts] :or {opts {}}}]]
   (let [opts (stan/mcmc-opts opts)
         {:keys [data metadata]} (prep/prepare
-                                  (util/read-json (config/cfg :paths :raw)))]
+                                 (util/read-json (config/cfg :paths :raw)))]
     (println "── prior predictive (M0) ──")
     (let [pp (prior-predictive {:png (results-path "prior_predictive_M0.png")})]
       (println pp))
@@ -394,7 +394,7 @@
       (doseq [k [:m3 :m4]]
         (println (name k)
                  (posterior-predictive-check
-                   (fits k) {:png (results-path (str "ppc_" (name k) ".png"))})))
+                  (fits k) {:png (results-path (str "ppc_" (name k) ".png"))})))
       (println "── WAIC M3 vs M4 ──")
       (let [cmp (compare-m3-m4 data metadata opts)]
         (doseq [r cmp] (println r))

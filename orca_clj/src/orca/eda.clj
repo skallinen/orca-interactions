@@ -9,7 +9,7 @@
    Produces stratified frequency tables + interaction rates for ordinal,
    categorical, and binary predictors (printed to console), and saves three
    figures via orca.plot (content parity with the committed reference figures, not
-   pixel parity, porting.md §6.4):
+   pixel parity):
      - distribution_ordinal.png    — interaction rate per ordinal level;
      - distribution_categorical.png — interaction rate per category;
      - distribution_binary.png     — interaction rate per binary level."

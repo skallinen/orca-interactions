@@ -1,7 +1,7 @@
 (ns orca.diagnostics
   "MCMC convergence diagnostics and interval summaries. These follow the
    ArviZ/Stan definitions (Vehtari et al. 2021), so the reported numbers match
-   those conventions to ~2 significant figures (porting.md §6.5).
+   those conventions to ~2 significant figures.
 
    - `rhat`     — rank-normalized, folded split-R̂ (Vehtari et al. 2021; the
                   ArviZ default): max of the rank-normalized split-R̂ of the
@@ -96,12 +96,12 @@
       (let [lim (- n t)]
         (aset c t
               (double
-                (/ (loop [i 0 acc 0.0]
-                     (if (< i lim)
-                       (recur (inc i)
-                              (+ acc (* (- (aget x i) m) (- (aget x (+ i t)) m))))
-                       acc))
-                   n)))))
+               (/ (loop [i 0 acc 0.0]
+                    (if (< i lim)
+                      (recur (inc i)
+                             (+ acc (* (- (aget x i) m) (- (aget x (+ i t)) m))))
+                      acc))
+                  n)))))
     c))
 
 ;; ── ESS (ArviZ `_ess`, no internal split) ──────────────────────────────────

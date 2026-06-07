@@ -1,5 +1,5 @@
 (ns orca.waic
-  "WAIC model comparison from pointwise log-likelihood (porting.md §4.3, §6.3).
+  "WAIC model comparison from pointwise log-likelihood.
 
    Each ladder model emits `generated quantities { vector[N] log_lik; }`, so a
    pooled draws dataset carries S draws × N columns `log_lik.1`..`log_lik.N`.
@@ -14,8 +14,8 @@
 
    We use WAIC, not ArviZ's PSIS-LOO (`az.compare(ic='loo')`), as an intentional
    substitution: no Pareto tail fit, simpler and lower-risk. WAIC and PSIS-LOO
-   agree closely for well-behaved models, so the M3-vs-M4 ranking reproduces
-   (porting.md §6.3). `compare` ranks models best-first and reports Δelpd
+   agree closely for well-behaved models, so the M3-vs-M4 ranking reproduces.
+   `compare` ranks models best-first and reports Δelpd
    (best − model, the ArviZ `elpd_diff` convention) with its standard error."
   (:refer-clojure :exclude [compare])
   (:require

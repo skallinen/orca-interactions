@@ -12,8 +12,8 @@
      Poisson rate ratio, 0.56 [0.43, 0.72] (orca.timeofday). There is no
      Night-vs-Day contrast in these coefficient tables.
    - Model comparison uses WAIC (orca.waic), an intentional substitution for
-     PSIS-LOO recorded in porting.md §6.3. The valid (shared-N) WAIC of M3 vs
-     M4 is delegated to orca.models/compare-m3-m4.
+     PSIS-LOO. The valid (shared-N) WAIC of M3 vs M4 is delegated to
+     orca.models/compare-m3-m4.
 
    The coefficient tables/plots use M3 fit on its own complete cases (N≈605, the
    blog's primary-model N); M4 is fit on its own complete cases for its table. A

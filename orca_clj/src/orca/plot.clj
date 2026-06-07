@@ -1,8 +1,7 @@
 (ns orca.plot
   "Headless PNG chart helpers (XChart / Java2D) — the plotting layer for the
    analysis. The goal is *content* parity with the committed reference figures,
-   not pixel parity (porting.md §6.4): violin plots become XChart box plots, the
-   rest map directly.
+   not pixel parity: violin plots become XChart box plots, the rest map directly.
 
    Each helper writes a PNG to `path` (creating parent dirs) and returns the
    path. Charts render through AWT/Java2D in headless mode.
@@ -111,7 +110,7 @@
     (doto (.getStyler chart)
       (.setLegendVisible false)
       (.setyAxisTickLabelsFormattingFunction
-        (index-label-fn (map :label rows))))
+       (index-label-fn (map :label rows))))
     (save! chart path)))
 
 (defn box
@@ -162,5 +161,5 @@
     (doto (.getStyler chart)
       (.setLegendVisible false)
       (.setxAxisTickLabelsFormattingFunction
-        (index-label-fn (map :label rows))))
+       (index-label-fn (map :label rows))))
     (save! chart path)))

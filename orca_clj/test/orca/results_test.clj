@@ -1,8 +1,8 @@
 (ns orca.results-test
   "Unit tests for the pure contrast arithmetic in orca.results (the novel logic;
-   the fitting/printing/plotting paths are exercised end-to-end in the REPL per
-   porting.md §7). Draws are supplied as a tiny synthetic tablecloth dataset so no
-   CmdStan run is needed."
+   the fitting/printing/plotting paths are exercised end-to-end in the REPL).
+   Draws are supplied as a tiny synthetic tablecloth dataset so no CmdStan run is
+   needed."
   (:require
    [clojure.test :refer [deftest is testing]]
    [orca.results :as results]

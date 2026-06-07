@@ -10,3 +10,6 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# Claude Code session/tooling state
+.claude/

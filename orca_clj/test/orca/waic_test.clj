@@ -1,5 +1,5 @@
 (ns orca.waic-test
-  "Unit tests for WAIC, checked against hand-computed values (porting.md §4.3).
+  "Unit tests for WAIC, checked against hand-computed values.
    WAIC is validated on its own arithmetic plus the M3-vs-M4 ordering in the
    end-to-end run."
   (:require
