@@ -38,6 +38,50 @@
       (is (= ["x"] cats))
       (is (= [0 0] codes)))))
 
+(deftest harmonize-daylight-test
+  (is (= 1 (prep/harmonize-daylight "Day")))
+  (is (= 1 (prep/harmonize-daylight "Dawn , Day , Dusk , Night")))
+  (testing "dawn/dusk/night without a 'day' component -> 0"
+    (is (= 0 (prep/harmonize-daylight "Night")))
+    (is (= 0 (prep/harmonize-daylight "Dawn")))
+    (is (= 0 (prep/harmonize-daylight "Dusk"))))
+  (is (nil? (prep/harmonize-daylight nil))))
+
+(deftest parse-moon-test
+  (is (= [80 0] (prep/parse-moon "waning<br>80% illuminated<br>within 3 days of full")))
+  (is (= [0 1] (prep/parse-moon "waxing<br>0% illuminated<br>within 3 days of new")))
+  (testing "missing percentage / phase -> nil component"
+    (is (= [nil 1] (prep/parse-moon "waxing")))
+    (is (= [50 nil] (prep/parse-moon "50% illuminated"))))
+  (is (= [nil nil] (prep/parse-moon nil))))
+
+(deftest spring-tide-test
+  (is (= 1 (prep/spring-tide "Within 3 days of spring tide")))
+  (is (= 0 (prep/spring-tide "Not within 3 days of springs")))
+  (is (nil? (prep/spring-tide nil))))
+
+(deftest harmonize-towing-test
+  (testing "incident towing field"
+    (is (= 0 (prep/harmonize-towing {:towing "Not towing"})))
+    (is (= 1 (prep/harmonize-towing
+               {:towing "Towing and interacted with boat first"}))))
+  (testing "uneventful trailing field"
+    (is (= 0 (prep/harmonize-towing {:trailing "No"})))
+    (is (= 1 (prep/harmonize-towing {:trailing "Yes"}))))
+  (testing "both blank -> nil"
+    (is (nil? (prep/harmonize-towing {})))))
+
+(deftest parse-date-test
+  (testing "ISO date from date_of_interaction then date_passage_commenced"
+    (let [d (prep/parse-date {:date_of_interaction "2022-06-18"})]
+      (is (= 6 (.getMonthValue d)))
+      (is (= 2022 (.getYear d))))
+    (is (= 2021 (.getYear (prep/parse-date
+                            {:date_passage_commenced "2021-08-10"}))))
+    (is (= "2022-06-18"
+           (str (prep/parse-date {:date_of_interaction "  2022-06-18 "})))))
+  (is (nil? (prep/parse-date {}))))
+
 (deftest standardize-test
   (testing "z-score with sample sd (ddof=1) and returned mean/sd"
     (let [[std m sd] (prep/standardize [0.0 1.0 2.0 3.0])]

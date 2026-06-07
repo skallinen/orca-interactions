@@ -31,10 +31,20 @@
   (let [{:keys [data metadata]} (prep/prepare (util/read-json raw-path))
         py-csv  (tc/dataset csv-path)
         py-meta (util/read-json meta-path)
-        cols [:boat_length_ord_std :depth_ord_std :distance_ord_std :speed_ord_std
-              :wind_ord_std :sea_state_ord_std :boat_type_idx :rudder_idx
-              :antifoul_idx :sailing_mode_idx :hull_colour_idx :autopilot_on
-              :interaction]
+        cols [:interaction :month :year
+              ;; raw ordinals
+              :boat_length_ord :depth_ord :distance_ord :speed_ord
+              :wind_ord :sea_state_ord :cloud_cover_ord
+              ;; standardized ordinals
+              :boat_length_ord_std :depth_ord_std :distance_ord_std :speed_ord_std
+              :wind_ord_std :sea_state_ord_std :cloud_cover_ord_std
+              ;; index categoricals
+              :boat_type_idx :rudder_idx :antifoul_idx :sailing_mode_idx
+              :hull_colour_idx
+              ;; binaries + moon + location
+              :is_daytime :autopilot_on :is_towing :is_spring_tide :moon_waxing
+              :moon_illumination :moon_illumination_std
+              :summary_lat :summary_long]
         order-ok (= (mapv str (data :report_id))
                     (mapv #(str (long %)) (py-csv "report_id")))
         col-results (into {} (for [c cols]
@@ -64,19 +74,19 @@
    difference is small in absolute terms AND relative to the posterior sd
    (run-to-run NUTS noise on weakly-identified offsets). Returns
    {:pass? bool :max-dmean .. :max-rel .. :rows [...]}."
-  [{:keys [clj-path py-path abs-tol rel-tol]
+  [{:keys [clj-path ref-path abs-tol rel-tol]
     :or {clj-path (config/cfg :paths :out-posterior)
-         py-path (config/cfg :paths :py-posterior)
+         ref-path (config/cfg :paths :ref-posterior)
          abs-tol (config/cfg :validate :abs-tol)
          rel-tol (config/cfg :validate :rel-tol)}}]
   (let [clj (summary (util/read-json clj-path))
-        py  (summary (util/read-json py-path))
-        rows (for [nm (keys py)]
+        oracle (summary (util/read-json ref-path))
+        rows (for [nm (keys oracle)]
                (let [{cm :mean cs :sd} (clj nm)
-                     {pm :mean} (py nm)
-                     dmean (- cm pm)
+                     {rm :mean} (oracle nm)
+                     dmean (- cm rm)
                      rel (/ (abs dmean) (max cs 1e-9))]
-                 {:param nm :clj-mean cm :py-mean pm :dmean dmean :rel rel
+                 {:param nm :clj-mean cm :ref-mean rm :dmean dmean :rel rel
                   :pass? (or (< (abs dmean) abs-tol) (< rel rel-tol))}))]
     {:pass? (every? :pass? rows)
      :max-dmean (apply max (map (comp abs :dmean) rows))
