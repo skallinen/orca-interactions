@@ -41,4 +41,34 @@
   :sea-state   {"Calm" 0 "Moderate" 1 "Rough" 2}}
 
  ;; Posterior-comparison tolerances for orca.validate/validate-posterior.
- :validate {:abs-tol 0.1 :rel-tol 0.2}}
+ :validate {:abs-tol 0.1 :rel-tol 0.2}
+
+ ;; Cruising Association orca-survey API (orca.fetch). This is a documented JSON
+ ;; API, not a scraped site — every record comes from an endpoint below.
+ :api
+ {:base-url        "https://apinl.theca.org.uk/orcasurvey/v1"
+  :client-type     "websiteapp"
+  :out-dir         "../orca_data"
+  :max-workers     15
+  :retries         3
+  :timeout-seconds 120
+  ;; Column orderings for the emitted CSVs (present keys first in this order,
+  ;; then any remaining keys alphabetically — matches the original downloader).
+  :summary-priority [:report_id :type :serial :time :lat :long]
+  :incident-priority
+  [:report_id :serial :report_type :date_of_interaction :time_of_interaction
+   :summary_lat :summary_long :summary_time
+   :lat_deg :lat_min :long_deg :long_min
+   :boat_type :boat_length :motoring_or_sailing :speed
+   :rudder :autopilot :antifoul_colour :hull_topsides_colour
+   :depth :distance_off_land :sea_state :wind_speed
+   :darkness_or_daylight :cloud_cover
+   :damaged :tow_required :length_of_interaction
+   :behaviour_text_edited :response_text_edited
+   :towing :depth_gauge :daystage :moon :tide]
+  :uneventful-priority
+  [:report_id :serial :report_type :summary_time
+   :summary_lat :summary_long
+   :boat_type :boat_length :motoring_or_sailing :speed
+   :rudder :autopilot :antifoul_colour :hull_topsides_colour
+   :depth :distance_off_land :sea_state :wind_speed]}}
