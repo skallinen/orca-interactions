@@ -27,8 +27,11 @@
  :zone {:lat 37.0 :lon -8.0}
 
  ;; Passages longer than this many hours are data-entry errors (the raw data has
- ;; multi-month "passages") and are dropped from the exposure integration.
- :max-passage-hours 168.0
+ ;; multi-month "passages") and are dropped from the exposure integration. The
+ ;; 200 h (~8-day) cut reconciles the exposure totals with the published model
+ ;; (night 4,280 / day 7,933 yacht-hours, 11.8 / 20.9 per 1,000 h); see
+ ;; orca.timeofday and methodology.html §7.
+ :max-passage-hours 200.0
 
  ;; Ordinal level -> code.
  :ordinal-maps

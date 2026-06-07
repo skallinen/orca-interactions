@@ -46,7 +46,7 @@
 (deftest exposure-excludes-long-passages-test
   (let [uneventful [{:date_passage_commenced "2023-06-15" :time_passage_commenced "12:00:00"
                      :date_passage_ended     "2023-06-15" :time_passage_ended     "14:00:00"}
-                    ;; 14-day "passage" = 336 h > 168 h cutoff -> dropped as a data error
+                    ;; 14-day "passage" = 336 h > 200 h cutoff -> dropped as a data error
                     {:date_passage_commenced "2023-06-01" :time_passage_commenced "00:00:00"
                      :date_passage_ended     "2023-06-15" :time_passage_ended     "00:00:00"}]
         {:keys [day night]} (tod/exposure uneventful)]
