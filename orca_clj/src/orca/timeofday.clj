@@ -110,7 +110,7 @@
   "Passages longer than this (hours) are data-entry errors (the raw data contains
    multi-month 'passages' up to ~3000 h) and are excluded from the exposure
    integration. The 200 h (~8-day) cut reproduces the published exposure totals
-   (night 4,280 / day 7,933 ≈ 12 200 yacht-hours, 11.8 / 20.9 per 1,000 h) while
+   (night 4,270 / day 7,944 ≈ 12 200 yacht-hours, 11.7 / 20.9 per 1,000 h) while
    preserving the load-bearing night/day rate ratio. From config.edn
    :max-passage-hours."
   (config/cfg :max-passage-hours))
