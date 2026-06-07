@@ -1,8 +1,14 @@
 (ns orca.util
-  "Small IO helpers: JSON read/write and summary stats used across namespaces."
+  "Small IO helpers: JSON read/write and summary stats used across namespaces.
+
+   The stats run through dtype-next (`tech.v3.datatype.functional`) on primitive
+   buffers — the same typed-loop substrate tablecloth columns use — so summaries
+   over thousands of posterior draws stay unboxed."
   (:require
    [charred.api :as charred]
-   [clojure.java.io :as io]))
+   [clojure.java.io :as io]
+   [tech.v3.datatype :as dtype]
+   [tech.v3.datatype.functional :as dfn]))
 
 (defn read-json
   "Parse a JSON file into Clojure data with keyword keys."
@@ -17,22 +23,26 @@
    (with-open [w (io/writer path)]
      (charred/write-json w data {:indent-str (when pretty? "  ")}))))
 
-(defn mean [xs]
-  (let [xs (seq xs)] (/ (double (reduce + 0.0 xs)) (count xs))))
+(defn mean
+  "Arithmetic mean (dtype-next typed reduction)."
+  [xs]
+  (-> xs dtype/->double-array dfn/mean))
 
 (defn pstdev
-  "Population standard deviation."
+  "Population standard deviation (ddof=0)."
   [xs]
-  (let [xs (vec xs) m (mean xs) n (count xs)]
-    (Math/sqrt (/ (reduce (fn [a x] (+ a (Math/pow (- x m) 2))) 0.0 xs) n))))
+  (let [ds (dtype/->double-array xs)
+        m  (dfn/mean ds)]
+    (-> ds (dfn/- m) dfn/sq dfn/mean Math/sqrt)))
 
 (defn quantile
-  "Linear-interpolated quantile q in [0,1] of a numeric collection."
+  "Linear-interpolated quantile q in [0,1] of a numeric collection (matches the
+   numpy default), computed on a primitive double[] for an unboxed sort."
   [xs q]
-  (let [v (vec (sort xs))
-        n (count v)
-        idx (* q (dec n))
-        lo (int (Math/floor idx))
-        hi (int (Math/ceil idx))
+  (let [v    (dtype/->double-array xs)
+        _    (java.util.Arrays/sort v)
+        idx  (* (double q) (dec (alength v)))
+        lo   (long (Math/floor idx))
+        hi   (long (Math/ceil idx))
         frac (- idx lo)]
-    (+ (nth v lo) (* frac (- (nth v hi) (nth v lo))))))
+    (+ (aget v lo) (* frac (- (aget v hi) (aget v lo))))))

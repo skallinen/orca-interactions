@@ -5,7 +5,7 @@
      - bayesian_orca/data/modeling_data.csv + metadata.json  (data prep)
      - blogpost/posterior_draws.json                         (M3 posterior)"
   (:require
-   [orca.model :as m]
+   [orca.config :as config]
    [orca.prepare :as prep]
    [orca.util :as util]
    [tablecloth.api :as tc]))
@@ -25,9 +25,9 @@
   "Compare the tablecloth data prep against modeling_data.csv + metadata.json.
    Returns {:pass? bool :details {...}}."
   [{:keys [raw-path csv-path meta-path]
-    :or {raw-path "../orca_data/all_reports_detailed.json"
-         csv-path "../bayesian_orca/data/modeling_data.csv"
-         meta-path "../bayesian_orca/data/metadata.json"}}]
+    :or {raw-path (config/cfg :paths :raw)
+         csv-path (config/cfg :paths :modeling-csv)
+         meta-path (config/cfg :paths :metadata-json)}}]
   (let [{:keys [data metadata]} (prep/prepare (util/read-json raw-path))
         py-csv  (tc/dataset csv-path)
         py-meta (util/read-json meta-path)
@@ -65,9 +65,10 @@
    (run-to-run NUTS noise on weakly-identified offsets). Returns
    {:pass? bool :max-dmean .. :max-rel .. :rows [...]}."
   [{:keys [clj-path py-path abs-tol rel-tol]
-    :or {clj-path "out/posterior_draws.json"
-         py-path "../blogpost/posterior_draws.json"
-         abs-tol 0.1 rel-tol 0.2}}]
+    :or {clj-path (config/cfg :paths :out-posterior)
+         py-path (config/cfg :paths :py-posterior)
+         abs-tol (config/cfg :validate :abs-tol)
+         rel-tol (config/cfg :validate :rel-tol)}}]
   (let [clj (summary (util/read-json clj-path))
         py  (summary (util/read-json py-path))
         rows (for [nm (keys py)]

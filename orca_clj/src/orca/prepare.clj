@@ -7,17 +7,18 @@
    output can be validated row-for-row against modeling_data.csv."
   (:require
    [clojure.string :as str]
-   [orca.util :as util]
-   [tablecloth.api :as tc]))
+   [orca.config :as config]
+   [tablecloth.api :as tc]
+   [tech.v3.datatype :as dtype]
+   [tech.v3.datatype.functional :as dfn]))
 
-;; --- Ordinal encoding maps (verbatim from prepare_data.py) ---
-(def boat-length-map {"Under 10m" 0 "10 - 12.5m" 1 "12.5 - 15m" 2 "Over 15m" 3})
-(def depth-map       {"Up to 20m" 0 "20 - 40m" 1 "40 - 200m" 2 "200m+" 3})
-(def distance-map    {"0 - 2" 0 "2 - 5" 1 "5 - 10" 2 "Over 10" 3})
-(def speed-map       {"0 - 2" 0 "3 - 4" 1 "5 - 7" 2 "8 - 11" 3})
-(def wind-map        {"0 - 2 (0 - 6 knots)" 0 "3 - 4 (7 - 16 knots)" 1
-                      "5 - 6 (17 - 27 knots)" 2 "7+ (28 knots+)" 3})
-(def sea-state-map   {"Calm" 0 "Moderate" 1 "Rough" 2})
+;; --- Ordinal encoding maps (config.edn :ordinal-maps, from prepare_data.py) ---
+(def boat-length-map (config/cfg :ordinal-maps :boat-length))
+(def depth-map       (config/cfg :ordinal-maps :depth))
+(def distance-map    (config/cfg :ordinal-maps :distance))
+(def speed-map       (config/cfg :ordinal-maps :speed))
+(def wind-map        (config/cfg :ordinal-maps :wind))
+(def sea-state-map   (config/cfg :ordinal-maps :sea-state))
 
 (defn- s [v] (when (some? v) (str/trim (str v))))
 
@@ -45,13 +46,13 @@
 
 (defn standardize
   "z-score with sample sd (ddof=1, matching pandas .std()) over non-nil values.
-   Returns [standardized-vals mean sd]."
+   Returns [standardized-vals mean sd]. Stats run on a primitive double[] via
+   dtype-next; the final pass keeps nil in its original positions (-> NaN)."
   [xs]
-  (let [present (filterv some? xs)
-        n (count present)
-        m (/ (double (reduce + present)) n)
-        sd (Math/sqrt (/ (reduce (fn [a x] (+ a (Math/pow (- x m) 2))) 0.0 present)
-                         (dec n)))]
+  (let [present (-> (filterv some? xs) dtype/->double-array)
+        n       (alength present)
+        m       (dfn/mean present)
+        sd      (-> present (dfn/- m) dfn/sq dfn/sum (/ (dec n)) Math/sqrt)]
     [(mapv #(when (some? %) (/ (- % m) sd)) xs) m sd]))
 
 (defn prepare
@@ -81,21 +82,21 @@
         [sail-idx sail-cats]     (index-column (col :motoring_or_sailing))
         [hull-idx hull-cats]     (index-column (col :hull_topsides_colour))
         ds (tc/dataset
-            {:interaction        (mapv #(if (= "incident" (:report_type %)) 1 0) rows)
-             :report_id          (col :report_id)
-             :report_type        (col :report_type)
-             :boat_length_ord_std len-std
-             :depth_ord_std       depth-std
-             :distance_ord_std    dist-std
-             :speed_ord_std       speed-std
-             :wind_ord_std        wind-std
-             :sea_state_ord_std   sea-std
-             :boat_type_idx       boat-idx
-             :rudder_idx          rudder-idx
-             :antifoul_idx        anti-idx
-             :sailing_mode_idx    sail-idx
-             :hull_colour_idx     hull-idx
-             :autopilot_on        (mapv #(autopilot-on (:autopilot %)) rows)})]
+             {:interaction        (mapv #(if (= "incident" (:report_type %)) 1 0) rows)
+              :report_id          (col :report_id)
+              :report_type        (col :report_type)
+              :boat_length_ord_std len-std
+              :depth_ord_std       depth-std
+              :distance_ord_std    dist-std
+              :speed_ord_std       speed-std
+              :wind_ord_std        wind-std
+              :sea_state_ord_std   sea-std
+              :boat_type_idx       boat-idx
+              :rudder_idx          rudder-idx
+              :antifoul_idx        anti-idx
+              :sailing_mode_idx    sail-idx
+              :hull_colour_idx     hull-idx
+              :autopilot_on        (mapv #(autopilot-on (:autopilot %)) rows)})]
     {:data ds
      :metadata
      {:categories {:boat_type boat-cats :rudder rudder-cats :antifoul anti-cats

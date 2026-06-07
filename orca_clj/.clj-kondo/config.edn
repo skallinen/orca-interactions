@@ -1,0 +1,13 @@
+;; clj-kondo config for orca_clj.
+;;
+;; We keep all bug-catching linters at their defaults (unused vars/requires,
+;; shadowed vars, type hints, arity, etc.) and only adjust three stylistic ones
+;; that fight this codebase's conventions:
+;;   - line-length: relaxed 80 -> 100; numeric data maps are column-aligned.
+;;   - docstring-no-summary: docstrings here are rich multi-line explanations,
+;;     not a single terminating-period summary line.
+;;   - missing-docstring: constants (lat/lon, ordinal maps, formatters) and
+;;     -main are self-describing; namespaces carry the prose.
+{:linters {:line-length {:max-line-length 100}
+           :docstring-no-summary {:level :off}
+           :missing-docstring {:level :off}}}

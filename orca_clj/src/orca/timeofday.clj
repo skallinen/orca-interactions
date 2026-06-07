@@ -8,6 +8,7 @@
    reports the night/day rate ratio."
   (:require
    [clojure.string :as str]
+   [orca.config :as config]
    [orca.stan :as stan]
    [orca.util :as util])
   (:import
@@ -15,8 +16,8 @@
    (java.time.format DateTimeFormatter)
    (org.shredzone.commons.suncalc SunTimes SunTimes$Twilight)))
 
-(def lat 37.0)
-(def lon -8.0)
+(def lat (config/cfg :zone :lat))
+(def lon (config/cfg :zone :lon))
 
 (defn- suntimes
   "Sun rise/set ZonedDateTimes at the orca zone for `date` and `twilight`."
@@ -30,7 +31,7 @@
 
 (def ^:private suntimes* (memoize suntimes))
 
-(defn- ^Instant inst [zdt] (when zdt (.toInstant zdt)))
+(defn- inst ^Instant [zdt] (when zdt (.toInstant zdt)))
 
 (defn solar-period
   "Classify a UTC `LocalDateTime` as :night/:dawn/:day/:dusk using civil-twilight
@@ -106,10 +107,11 @@
         [(* (- 1.0 night-frac) dur-h) (* night-frac dur-h)]))))
 
 (def default-max-passage-hours
-  "Passages longer than one week are data-entry errors (the raw data contains
+  "Passages longer than this (hours) are data-entry errors (the raw data contains
    multi-month 'passages' up to ~3000 h) and are excluded from the exposure
-   integration, consistent with the published ~12 200 yacht-hour total."
-  168.0)
+   integration, consistent with the published ~12 200 yacht-hour total. From
+   config.edn :max-passage-hours."
+  (config/cfg :max-passage-hours))
 
 (defn exposure
   "Total uneventful yacht-hours split into {:day T :night T}. Passages whose
@@ -144,14 +146,16 @@
 (defn fit
   "Fit the exposure rate model; return data + posterior summary of rate_ratio."
   [{:keys [raw-path n-chains seed]
-    :or {raw-path "../orca_data/all_reports_detailed.json"
-         n-chains 4 seed 42}}]
+    :or {raw-path (config/cfg :paths :raw)
+         n-chains (config/cfg :mcmc :n-chains)
+         seed (config/cfg :mcmc :seed)}}]
   (let [raw  (util/read-json raw-path)
         data (rate-model-data raw)
         draws (stan/sample "stan/rate.stan" data
                            {:n-chains n-chains :seed seed
-                            :num-warmup 1000 :num-samples 2000
-                            :out-dir "out/rate"})
+                            :num-warmup (config/cfg :mcmc :num-warmup)
+                            :num-samples (config/cfg :mcmc :num-samples)
+                            :out-dir (config/cfg :paths :rate-out-dir)})
         rr (vec (draws "rate_ratio"))]
     {:data data
      :rate-ratio {:median (util/quantile rr 0.5)

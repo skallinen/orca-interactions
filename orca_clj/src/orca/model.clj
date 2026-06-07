@@ -2,6 +2,7 @@
   "Fit M3 (no daylight) with CmdStan and export posterior draws in the same
    layout as bayesian_orca/refit_no_daylight.py -> blogpost/posterior_draws.json."
   (:require
+   [orca.config :as config]
    [orca.prepare :as prep]
    [orca.stan :as stan]
    [orca.util :as util]
@@ -21,10 +22,10 @@
 (defn stan-data
   "Build the CmdStan data map from a complete-case dataset + metadata.
    Category indices are shifted 0-based -> 1-based."
-  [d meta]
+  [d md]
   (let [col   (fn [k] (vec (d k)))
         idx1  (fn [k] (mapv #(inc (long %)) (d k)))
-        ncat  (fn [k] (count (get-in meta [:categories k])))]
+        ncat  (fn [k] (count (get-in md [:categories k])))]
     {:N         (tc/row-count d)
      :y         (mapv long (d :interaction))
      :depth     (col :depth_ord_std)
@@ -69,22 +70,27 @@
   [draws n-out]
   (let [cols (mapv #(vec (draws %)) stan-cols)
         total (count (first cols))
-        keep (thin-to total n-out)]
+        keep-idx (thin-to total n-out)]
     (mapv (fn [i] (mapv #(-> (nth % i) double (* 10000) Math/round (/ 10000.0)) cols))
-          keep)))
+          keep-idx)))
 
 (defn run
   "Full pipeline: prepare -> fit -> export posterior_draws.json. Returns the
    output map (also written to `out-path`)."
   [{:keys [raw-path out-path n-out n-chains seed num-warmup num-samples]
-    :or   {raw-path "../orca_data/all_reports_detailed.json"
-           out-path "out/posterior_draws.json"
-           n-out 500 n-chains 4 seed 42 num-warmup 1000 num-samples 2000}}]
+    :or   {raw-path (config/cfg :paths :raw)
+           out-path (config/cfg :paths :out-posterior)
+           n-out (config/cfg :mcmc :n-out)
+           n-chains (config/cfg :mcmc :n-chains)
+           seed (config/cfg :mcmc :seed)
+           num-warmup (config/cfg :mcmc :num-warmup)
+           num-samples (config/cfg :mcmc :num-samples)}}]
   (let [{:keys [data metadata]} (prep/prepare (util/read-json raw-path))
         d      (complete-cases data)
         draws  (stan/sample "stan/m3.stan" (stan-data d metadata)
                             {:n-chains n-chains :seed seed
-                             :num-warmup num-warmup :num-samples num-samples})
+                             :num-warmup num-warmup :num-samples num-samples
+                             :out-dir (config/cfg :paths :out-dir)})
         rows   (draws->rows draws n-out)
         n-int  (-> d (tc/select-rows #(= 1 (% :interaction))) tc/row-count)
         output {:n (count rows)
