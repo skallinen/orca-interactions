@@ -1,0 +1,6 @@
+/out/
+/.cpcache/
+/stan/m3
+/stan/rate
+*.hpp
+*.o
