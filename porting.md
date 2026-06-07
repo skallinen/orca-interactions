@@ -348,3 +348,58 @@ is done. Roster detail lives in `AGENTS.md`.
 - The in-browser calculator (already ClojureScript in `index.html`).
 - Re-running Python or regenerating the committed oracle artifacts.
 - Pixel-identical reproduction of matplotlib figures (content parity only).
+
+---
+
+## 11. Deferred / known gaps (Phase E double-check, item 19)
+
+Surfaced while re-reading the implementation against both blog posts. Recorded
+here for the Phase F whole-system review.
+
+1. **Time-of-day × risk-factor interaction (4-rate Poisson model) — NOT ported.**
+   Both blog posts (methodology §7 "Time-of-Day Interactions"; index.html
+   "do the other risk factors behave differently at night?") describe an
+   *extension* of the exposure Poisson model that stratifies incident rate per
+   yacht-hour by time-of-day × {antifoul, sailing mode} — e.g. "Black antifoul
+   2.1× day / 2.4× night, interaction ratio 1.2× [0.7, 1.8]"; "Motoring 4.1× day
+   / 5.5× night, ratio 1.4× [0.8, 2.2]". `orca.timeofday` implements only the
+   single overall night/day rate ratio (0.56 [0.43, 0.72]), not this stratified
+   4-rate interaction model. This analysis was never enumerated in §4 of this
+   plan, so it was out of the ported scope; the headline rate-ratio claim *is*
+   reproduced, and the blog uses the interaction result only to justify applying
+   that single ratio as a uniform multiplier (the interactions are negligible).
+   **Deferred:** add an `orca.timeofday` stratified-exposure rate model
+   (time-of-day × antifoul/sailing) if/when this section needs reproducing.
+
+2. **Historical night-coefficient magnitude (+2.06, OR 7.8×) is not reproduced
+   numerically — by design.** The blog frames "+2.06 / 7.8×" as the *original*
+   with-daylight finding that was then *removed*. The Clojure with-daylight study
+   (`orca.encoding`/`m3_daylight.stan`) reproduces the *direction-flip* story
+   (β_daylight ≈ −1.09 under encoding A vs +1.57 under B), but not that exact
+   magnitude — m3_build uses the tighter ladder priors + full controls, so the
+   coefficient is shrunk. The committed oracle is not regenerated, and the blog
+   number is historical narrative, so this is expected, not a defect.
+
+3. **Autopilot sign nuance (pre-existing).** The fitted model's `b_autopilot` is
+   genuinely negative (autopilot-on lowers the odds), which matches the blog's
+   "autopilot off is the strongest predictor" framing once the sign convention is
+   read correctly. Noted in the Phase C progress memory; not a port artifact.
+
+4. **Absolute night/day incident rates differ slightly (ratio preserved).** The
+   Clojure exposure model gives ~13.6 incidents per 1,000 yacht-hours at night
+   and ~23.7 by day (index.html quotes 11.8 and 20.9). The *ratio* — the
+   load-bearing claim — is 0.57, matching the published 0.56 [0.43, 0.72]; the
+   night-hour fraction (34.5% vs "35%") and incident-night fraction (23.1% vs
+   "23%") also match. The absolute per-1,000-hour rates differ because the
+   exposure-hour totals depend on the sampling interval / max-passage filter; the
+   committed oracle is not regenerated, so this minor offset is left as-is.
+   Verified counts: y_night=50, y_day=166, T_night≈3689, T_day≈6999 yacht-hours.
+
+**Cross-checks that PASSED (item 19).** Encoding A/B data table reproduces the
+blog exactly (A: night n=76, 11 uneventful, 85.5% / day 26.1%; B: night 21.1% /
+day 36.3%); M3 complete-case N=605; antifoul Black 44.5% vs Coppercoat 17.0%,
+Fisher OR≈3.9, single-predictor Black−Coppercoat +1.16 [0.72,1.60]; WAIC ranks
+M3 over M4 (Δ within 1 se), matching "M4 no credible effects"; the four-prior
+sensitivity sweep keeps slopes stable while the intercept swings. Blog stack/
+method prose (CmdStan/NUTS, Clojure diagnostics, WAIC, commons-suncalc) now
+matches the implementation.
