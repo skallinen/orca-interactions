@@ -435,7 +435,7 @@
 
 <h2>Why Bayesian?</h2>
 
-<p>We used the Bayesian flavour of logistic regression rather than the classical (frequentist) version. The practical difference is that a Bayesian model gives us a full distribution for each coefficient, not just a single point estimate. Instead of saying "the depth effect is 0.84," it says "the depth effect is most likely around 0.84, with a 89% chance of falling between 0.59 and 1.10." This range is called the credible interval.</p>
+<p>We used the Bayesian flavour of logistic regression rather than the classical (frequentist) version. The practical difference is that a Bayesian model gives us a full distribution for each coefficient, not just a single point estimate. Instead of saying "the depth effect is 0.95," it says "the depth effect is most likely around 0.95, with an 89% chance of falling between 0.71 and 1.22." This range is called the credible interval.</p>
 
 <div class="definition">
   <strong>89% credible interval:</strong> A range within which the true value falls with 89% probability, given the data and model. If the entire interval is above zero, we can be quite confident the effect is positive. If it spans zero, we cannot be sure there is any effect at all. (We use 89% rather than the conventional 95% following the recommendation in <em>Statistical Rethinking</em> by Richard McElreath, because there is nothing special about 95% and 89% is a prime number that reminds us the threshold is arbitrary.)
@@ -628,7 +628,7 @@
 
 <p><strong>Sail if you can.</strong> Motoring carries 1.9 times the odds of sailing or motorsailing. If conditions allow, turn off the engine.</p>
 
-<p><strong>Consider your antifoul colour.</strong> Black antifoul is associated with double the interaction rate. Coppercoat appears protective. If you are re-antifouling before a transit, this data point is worth considering, though we cannot be certain the colour itself is the cause.</p>
+<p><strong>Consider your antifoul colour.</strong> Black antifoul is associated with higher odds of interaction: about 1.5 times the average in the full model, and about 2.6 times the odds of Coppercoat. Coppercoat appears protective. If you are re-antifouling before a transit, this data point is worth considering, though we cannot be certain the colour itself is the cause.</p>
 
 <p><strong>Do not worry too much about speed, boat length, or rudder type.</strong> The model found no credible effect for any of these.</p>
 
