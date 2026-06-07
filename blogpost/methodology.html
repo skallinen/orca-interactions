@@ -231,7 +231,7 @@
 
 <p>The Cruising Association maintains a public reporting system where skippers can file two types of reports: <strong>incident reports</strong> (an orca interaction occurred) and <strong>uneventful passage reports</strong> (the boat transited the affected zone without incident). Both forms collect the same set of variables.</p>
 
-<p>We collected all reports via the Cruising Association's public JSON API. The API exposes a report list endpoint and individual report detail endpoints. A Python script iterates through the report list, fetches each report's details, and stores them as structured JSON.</p>
+<p>We collected all reports via the Cruising Association's public JSON API. The API exposes a report list endpoint and individual report detail endpoints. An API client iterates through the report list, fetches each report's details concurrently, and stores them as structured JSON.</p>
 
 <pre>
 # API endpoints (public, no authentication required)
@@ -381,11 +381,11 @@ logit(p_i) = α + β_depth·depth_i + β_autopilot·autopilot_i + β_speed·spee
   </tbody>
 </table>
 
-<p>M3 is the primary model used for all results. M4 adds moon, tide, and cloud cover, which showed no credible effects and slightly worse predictive performance. Time of day was originally in M3 but was removed after the encoding analysis described below.</p>
+<p>M3 is the primary model used for all results. Models are compared by their expected log pointwise predictive density estimated with the <strong>WAIC</strong> (Widely Applicable Information Criterion), computed from the pointwise log-likelihood each model emits. M4 adds moon, tide, and cloud cover, which showed no credible effects and a slightly worse (indistinguishable, within one standard error) WAIC than M3. Time of day was originally in M3 but was removed after the encoding analysis described below.</p>
 
 <h2>5. MCMC Sampling</h2>
 
-<p>All models are fitted using PyMC (v5) with the NUTS (No-U-Turn Sampler) algorithm:</p>
+<p>All models are written in Stan and fitted with CmdStan using the NUTS (No-U-Turn Sampler) algorithm, driven from Clojure:</p>
 
 <pre>
 # Sampling configuration
@@ -396,7 +396,7 @@ Total draws: 8,000 (4 × 2,000)
 Seed:        42 (for reproducibility)
 </pre>
 
-<p>All four chains converged cleanly for M3. No divergences, no max treedepth warnings, and R-hat values were all within 0.01 of 1.0.</p>
+<p>All four chains converged cleanly for M3. Convergence is checked with diagnostics computed directly in Clojure following the standard Stan/ArviZ definitions: the rank-normalised, folded split-R-hat (Vehtari et al. 2021) and bulk/tail effective sample size (ESS). For M3 there were no divergences, R-hat values were all within 0.01 of 1.0, and ESS comfortably exceeded 400 for every parameter.</p>
 
 <h2>6. Case-Control Correction</h2>
 
@@ -449,7 +449,7 @@ where:
 
 <p>Rather than forcing the ambiguous time variable into the logistic regression, we analysed time of day separately using an exposure-based approach. Both datasets contain actual timestamps: incident reports have a time of interaction; uneventful passages have start and end times.</p>
 
-<p>Using the <code>astral</code> Python library, we computed the solar position for each timestamp at a central location in the orca zone (37°N, 8°W) and classified each moment as Day, Night, Dawn, or Dusk based on astronomical twilight boundaries.</p>
+<p>Using the <code>commons-suncalc</code> Java library, we computed the solar position for each timestamp at a central location in the orca zone (37°N, 8°W) and classified each moment as Day, Night, Dawn, or Dusk based on astronomical twilight boundaries.</p>
 
 <p>For uneventful passages, we sampled the solar period at regular intervals between start and end times to compute total yacht-hours in daylight versus darkness. For incidents, we classified the single interaction timestamp.</p>
 
@@ -528,17 +528,20 @@ night_factor = 0.56 × day_factor          = 0.662
     <tr><th>Component</th><th>Version / Details</th></tr>
   </thead>
   <tbody>
-    <tr><td>Python</td><td>3.11+</td></tr>
-    <tr><td>PyMC</td><td>5.x (NUTS sampler)</td></tr>
-    <tr><td>ArviZ</td><td>Diagnostics and posterior summaries</td></tr>
-    <tr><td>astral</td><td>Solar position calculations for time-of-day analysis</td></tr>
-    <tr><td>pandas / NumPy / SciPy</td><td>Data manipulation</td></tr>
+    <tr><td>Clojure / JVM</td><td>The analysis runs on the JVM; no Python at runtime</td></tr>
+    <tr><td>CmdStan</td><td>NUTS sampler; models written in Stan, driven from Clojure</td></tr>
+    <tr><td>tablecloth / dtype-next</td><td>Data manipulation</td></tr>
+    <tr><td>Diagnostics (Clojure)</td><td>Rank-normalised split-R-hat, bulk/tail ESS, ETI/HDI</td></tr>
+    <tr><td>WAIC (Clojure)</td><td>Model comparison from pointwise log-likelihood</td></tr>
+    <tr><td>commons-suncalc</td><td>Solar position calculations for time-of-day analysis</td></tr>
+    <tr><td>Apache Commons Math</td><td>Frequentist tests (chi-square, Fisher's exact, t-test)</td></tr>
+    <tr><td>XChart</td><td>Headless PNG figures</td></tr>
     <tr><td>Scittle (ClojureScript)</td><td>In-browser interactive calculator</td></tr>
     <tr><td>Random seed</td><td>42 (all sampling)</td></tr>
   </tbody>
 </table>
 
-<p>All analysis scripts are in the project repository under <code>bayesian_orca/</code>. The pipeline runs in sequence: <code>scrape_orca_data.py</code> &rarr; <code>prepare_data.py</code> &rarr; <code>refit_no_daylight.py</code> (model fitting) &rarr; posterior draws exported to <code>blogpost/posterior_draws.json</code>.</p>
+<p>The analysis lives in the project repository under <code>orca_clj/</code>. The pipeline runs in sequence: fetch reports from the API (<code>orca.fetch</code>) &rarr; prepare the modeling dataset (<code>orca.prepare</code>) &rarr; fit the no-daylight M3 (<code>orca.model</code> / <code>stan/m3.stan</code>) &rarr; posterior draws exported to <code>blogpost/posterior_draws.json</code>. The full ladder, results, sensitivity, finding validations, encoding studies, and figures run from <code>orca.core</code>.</p>
 
 <hr>
 
