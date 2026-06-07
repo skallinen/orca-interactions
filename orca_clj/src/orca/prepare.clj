@@ -123,13 +123,23 @@
 (defn standardize
   "z-score with sample sd (ddof=1) over non-nil values.
    Returns [standardized-vals mean sd]. Stats run on a primitive double[] via
-   dtype-next; the final pass keeps nil in its original positions (-> NaN)."
+   dtype-next; the standardized pass keeps nil in its original positions.
+
+   Guards two degenerate inputs that would otherwise propagate NaN/Inf silently
+   into the Stan data:
+   - n ≤ 1 non-nil values: ddof=1 sd is undefined → asserts (a predictor column
+     with at most one observed value is a data/encoding error here).
+   - zero variance (constant column): every standardized value is 0.0 (the
+     constant carries no signal) rather than 0/0 = NaN; sd is returned as 0.0."
   [xs]
   (let [present (-> (filterv some? xs) dtype/->double-array)
         n       (alength present)
+        _       (assert (> n 1) "standardize needs >1 non-nil value (ddof=1)")
         m       (dfn/mean present)
         sd      (-> present (dfn/- m) dfn/sq dfn/sum (/ (dec n)) Math/sqrt)]
-    [(mapv #(when (some? %) (/ (- % m) sd)) xs) m sd]))
+    (if (zero? sd)
+      [(mapv #(when (some? %) 0.0) xs) m 0.0]
+      [(mapv #(when (some? %) (/ (- % m) sd)) xs) m sd])))
 
 (defn prepare
   "Build {:data <tablecloth ds> :metadata {...}} from raw reports (seq of maps)."

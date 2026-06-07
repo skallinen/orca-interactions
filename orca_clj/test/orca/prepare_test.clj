@@ -94,4 +94,17 @@
       (is (close? 1.0 m))
       (is (close? (Math/sqrt 2.0) sd))
       (is (nil? (second std)))
-      (is (close? (/ (- 0.0 1.0) sd) (first std))))))
+      (is (close? (/ (- 0.0 1.0) sd) (first std)))))
+  (testing "zero-variance (constant) column → zeros, sd 0 (no 0/0 NaN)"
+    (let [[std m sd] (prep/standardize [2.0 2.0 2.0])]
+      (is (close? 2.0 m))
+      (is (close? 0.0 sd))
+      (is (= [0.0 0.0 0.0] std))
+      (is (every? #(not (Double/isNaN (double %))) std))))
+  (testing "constant column keeps nil in place"
+    (let [[std _ sd] (prep/standardize [5.0 nil 5.0])]
+      (is (close? 0.0 sd))
+      (is (= [0.0 nil 0.0] std))))
+  (testing "n ≤ 1 non-nil value asserts (ddof=1 undefined)"
+    (is (thrown? AssertionError (prep/standardize [1.0])))
+    (is (thrown? AssertionError (prep/standardize [nil 1.0 nil])))))
