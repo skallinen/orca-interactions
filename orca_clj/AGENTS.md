@@ -29,6 +29,32 @@ tablecloth/dtype-next (data), CmdStan via `orca.stan` (MCMC), `commons-suncalc`
    modeling decisions. Where an implementation choice diverges from a naive
    reading it is deliberate; don't silently "fix" the science.
 
+## Writing prose (blog, docs, docstrings, comments, commit messages)
+
+Write plainly and directly. The prose here is human-edited; avoid the patterns
+that read as machine-generated:
+
+1. **Never use em dashes or en dashes as sentence punctuation.** Use a comma, a
+   colon, parentheses, or two sentences, or rewrite. In HTML that means no
+   `&mdash;`/`&ndash;` and no literal `—`/`–` as a break. A hyphen inside a range
+   or compound (`20 - 40m`, `split-R̂`) is fine.
+2. **No thesis-antithesis construction**: "not X, but Y", "it's not just X, it's
+   Y", "not only ... but also". State the point directly.
+3. **No rule-of-three padding** ("fast, simple, and correct") unless all three
+   items carry weight.
+4. **No filler openers or hedges**: "It's worth noting", "It's important to
+   realise", "Note that", "Of course", "Simply put".
+5. **No formulaic wrap-ups**: "In conclusion", "Overall", "In summary", "At the
+   end of the day".
+6. **No inflated diction**: delve, dive into, leverage, utilise, seamless,
+   tapestry, landscape, realm, testament, boasts, unlock, "plays a crucial role".
+7. **No connector chaining** (runs of "Moreover / Furthermore / Additionally")
+   and **no sycophantic framing** ("Great question", "Let's ...").
+
+Prefer concrete numbers and specifics; cut adjectives that don't change the
+meaning. Idiomatic Clojure naming in code follows the other sections, not this
+one.
+
 ## Clojure workflow (REPL-driven)
 
 - A long-lived **socket REPL on port 5577** runs inside the nix tooling shell.
