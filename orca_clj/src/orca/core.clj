@@ -78,6 +78,8 @@
     (println (format "  rate ratio (night/day): %.3f  89%% CI [%.3f, %.3f]  P(night lower)=%.2f"
                      median (first ci89) (second ci89) p-night-lower))
     (println (format "  vs published 0.56 [0.43, 0.72], P~1.0  ->  %s" ok))
+    (println)
+    (tod/interaction-report (if opts {:opts opts} {}))
     rate-ratio))
 
 ;; ── the original three-piece reproduction ────────────────────────────────────

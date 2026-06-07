@@ -58,3 +58,39 @@
                    {:date_of_interaction "2023-06-15" :time_of_interaction "02:00:00"}
                    {:date_of_interaction "2023-06-15" :time_of_interaction nil}]]
     (is (= {:night 1 :day 1} (tod/incident-counts incidents)))))
+
+(deftest incident-counts-4-test
+  (testing "incidents split into the four present/absent x day/night cells"
+    (let [incidents [;; present + day
+                     {:date_of_interaction "2023-06-15" :time_of_interaction "12:30:00" :f true}
+                     ;; present + night
+                     {:date_of_interaction "2023-06-15" :time_of_interaction "02:00:00" :f true}
+                     ;; absent + day (two of them)
+                     {:date_of_interaction "2023-06-15" :time_of_interaction "13:00:00" :f false}
+                     {:date_of_interaction "2023-06-15" :time_of_interaction "11:00:00" :f false}
+                     ;; absent + night
+                     {:date_of_interaction "2023-06-15" :time_of_interaction "03:00:00" :f false}
+                     ;; missing timestamp is skipped
+                     {:date_of_interaction "2023-06-15" :time_of_interaction nil :f true}]]
+      (is (= {:pd 1 :pn 1 :ad 2 :an 1}
+             (tod/incident-counts-4 incidents :f))))))
+
+(deftest exposure-4-test
+  (testing "uneventful yacht-hours split into the four cells, conserving totals"
+    (let [uneventful [;; present, all-day, 2 h
+                      {:date_passage_commenced "2023-06-15" :time_passage_commenced "12:00:00"
+                       :date_passage_ended     "2023-06-15" :time_passage_ended     "14:00:00"
+                       :f true}
+                      ;; absent, all-night, 2 h
+                      {:date_passage_commenced "2023-06-15" :time_passage_commenced "01:00:00"
+                       :date_passage_ended     "2023-06-15" :time_passage_ended     "03:00:00"
+                       :f false}
+                      ;; absent, 14-day "passage" > 200 h cutoff -> dropped
+                      {:date_passage_commenced "2023-06-01" :time_passage_commenced "00:00:00"
+                       :date_passage_ended     "2023-06-15" :time_passage_ended     "00:00:00"
+                       :f false}]
+          {:keys [T_pd T_pn T_ad T_an]} (tod/exposure-4 uneventful :f)]
+      (is (close? 2.0 T_pd))
+      (is (close? 0.0 T_pn))
+      (is (close? 0.0 T_ad))
+      (is (close? 2.0 T_an)))))
