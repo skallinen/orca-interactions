@@ -517,48 +517,9 @@
 
 <h3>The variable we had to rethink: time of day</h3>
 
-<p><strong>Time of day</strong> initially appeared to be the strongest predictor. Under our first encoding, night passages showed an 85% interaction rate versus 26% for daytime. The model estimated night was 7.8 times riskier. But the finding did not survive scrutiny.</p>
+<p><strong>Time of day</strong> initially appeared to be the strongest predictor: under our first encoding, night looked 7.8 times riskier than day. The finding did not survive scrutiny. The two report types record time differently (incidents capture a single moment, uneventful passages a multi-hour span), and different reasonable ways of encoding that ambiguity swung the night effect from far more dangerous, to safer, to no difference at all. The binary day/night variable cannot be encoded reliably for both groups, so we dropped it from the logistic regression. The other coefficients barely moved when we did, so it was not confounding them.</p>
 
-<p>The core problem is that the two groups measure time differently. Incident reports capture a single moment: the skipper records "Day" or "Night" when the interaction happened. Uneventful passage reports record a duration: the skipper enters a start time and end time, which might span 8 hours of daylight sailing or 30 hours covering day and night. This means we know <em>when interactions happen</em> but not <em>when the boats that had interactions were actually in the water</em>. And we know <em>when uneventful boats were in the water</em> but cannot assign them to a single time period.</p>
-
-<p>Different encodings of this ambiguous variable produce opposite conclusions:</p>
-
-<table>
-  <thead>
-    <tr><th>Encoding</th><th class="num">Night n</th><th class="num">Night incidents</th><th class="num">Night rate</th><th class="num">Day n</th><th class="num">Day incidents</th><th class="num">Day rate</th></tr>
-  </thead>
-  <tbody>
-    <tr><td><strong>A</strong>: Multi-period passages &rarr; day</td><td class="num">76</td><td class="num">65</td><td class="num"><strong>85.5%</strong></td><td class="num">578</td><td class="num">151</td><td class="num">26.1%</td></tr>
-    <tr><td><strong>B</strong>: Any mention of "Night" &rarr; night</td><td class="num">142</td><td class="num">30</td><td class="num">21.1%</td><td class="num">512</td><td class="num">186</td><td class="num"><strong>36.3%</strong></td></tr>
-    <tr><td><strong>C</strong>: Split into exposure windows</td><td class="num">177</td><td class="num">48</td><td class="num">27.1%</td><td class="num">598</td><td class="num">168</td><td class="num">28.1%</td></tr>
-  </tbody>
-</table>
-
-<p>Encoding A says night is extremely dangerous. Encoding B says day is riskier. Encoding C, which splits multi-period passages into separate day and night exposure windows, says there is no difference at all. Fitting the full Bayesian model under A and B produced a night coefficient that flipped sign entirely.</p>
-
-<p>But we can do better than these binary encodings. The uneventful passages have actual start and end timestamps, and we can compute how many yacht-hours were spent in daylight versus darkness using solar position calculations. This gives us the <em>exposure distribution</em>: the denominator we need. The incidents have exact timestamps too, so we know when each interaction occurred.</p>
-
-<p>The result: uneventful passages spent 35% of their total yacht-hours in darkness. But only 23% of incidents happened at night. We fitted a Bayesian Poisson rate model to quantify this: the incident rate is 11.8 per 1,000 yacht-hours at night versus 20.9 during the day. The posterior rate ratio is <strong>0.56 (89% CI: 0.43 to 0.72)</strong>, meaning roughly half as many incidents per yacht-hour at night compared to daytime, with 100% posterior certainty that night is safer. The result is insensitive to the prior.</p>
-
-<p>This makes some intuitive sense. Orcas are visual predators. They may be more active, or more likely to notice and approach a boat, during daylight hours. Alternatively, it could reflect differences in sailing patterns: night passages may follow different routes or be further offshore.</p>
-
-<p>A natural follow-up: do the other risk factors behave differently at night? If orcas rely on vision to spot boats, the visual contrast of black antifoul might matter less in darkness. We extended the Poisson rate model to cross-tabulate time of day with antifoul colour and sailing mode, computing separate incident rates per yacht-hour for each combination:</p>
-
-<table>
-  <thead>
-    <tr><th>Factor</th><th class="num">Effect during day</th><th class="num">Effect at night</th><th class="num">Interaction ratio</th><th>Interpretation</th></tr>
-  </thead>
-  <tbody>
-    <tr><td>Black antifoul (vs other)</td><td class="num">2.1&times; (89% CI: 1.6 to 2.6)</td><td class="num">2.4&times; (89% CI: 1.5 to 3.5)</td><td class="num">1.2&times; (89% CI: 0.7 to 1.8)</td><td>Same effect day and night</td></tr>
-    <tr><td>Motoring (vs other)</td><td class="num">4.1&times; (89% CI: 3.1 to 5.3)</td><td class="num">5.5&times; (89% CI: 3.2 to 8.5)</td><td class="num">1.4&times; (89% CI: 0.8 to 2.2)</td><td>Same effect day and night</td></tr>
-  </tbody>
-</table>
-
-<p>The interaction ratios are close to 1.0 and both credible intervals comfortably span it. Black antifoul doubles the incident rate regardless of whether it is day or night. If the mechanism were purely visual, we might expect the effect to weaken in darkness. The fact that it does not suggests either the mechanism is not visual, or orcas detect boats through other senses (acoustics, hydrodynamics) where colour still correlates with some relevant property.</p>
-
-<p>Because these effects are stable across time of day, the calculator below applies the day/night rate ratio as a uniform scaling factor on top of the logistic regression. This is valid precisely because the interaction terms are negligible.</p>
-
-<p>We dropped time of day from the logistic regression model because the binary day/night variable cannot be reliably encoded for both groups simultaneously. The exposure-based analysis above is a separate and cleaner calculation. The remaining model coefficients barely changed when we removed it, confirming it was not confounding the other findings.</p>
+<p>A cleaner calculation answers the night question on its own. Both report types carry real timestamps, so we can compute yacht-hours of daylight versus darkness from solar position and fit a Bayesian Poisson rate model on that exposure. It finds about half as many interactions per yacht-hour at night as by day: a rate ratio of <strong>0.56 (89% CI: 0.43 to 0.72)</strong>, with 100% posterior certainty that night is safer, and insensitive to the prior. The other risk factors (black antifoul, motoring) behave the same day and night, so the calculator applies this ratio as a uniform day/night scaling factor. The encoding comparison, the exposure model, and the day/night interaction checks are detailed in the <a href="methodology.html">technical methodology</a>.</p>
 
 <h3>The strong effects</h3>
 
