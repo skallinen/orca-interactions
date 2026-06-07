@@ -44,6 +44,27 @@
       (is (close? 2.0 (:d-elpd (second cmp))))
       (is (close? 0.0 (:d-se (second cmp)))))))
 
+(deftest compare-rejects-mismatched-n
+  (testing "models with different pointwise lengths throw, naming the offenders"
+    (let [wa (waic/waic [(repeat 4 -1.0) (repeat 4 -1.0)])        ; n=2
+          wb (waic/waic [(repeat 4 -2.0)])]                       ; n=1
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                            #"share N and pointwise length"
+                            (waic/compare {"A" wa "B" wb})))
+      (try (waic/compare {"A" wa "B" wb})
+           (catch clojure.lang.ExceptionInfo e
+             (is (= #{"A" "B"} (set (map :name (:models (ex-data e)))))))))))
+
+(deftest p-waic-warn-count
+  (testing ":n-p-warn counts observations whose pointwise p_waic > 0.4"
+    ;; obs1 draws [0 4]: var1 = 8 > 0.4 (warn); obs2 constant: var1 = 0 (ok)
+    (let [{:keys [n-p-warn]} (waic/waic [[0.0 4.0] (repeat 2 -1.0)])]
+      (is (= 1 n-p-warn)))
+    (testing "surfaced in compare rows"
+      (let [wa  (waic/waic [[0.0 4.0] (repeat 2 -1.0)])
+            cmp (waic/compare {"A" wa})]
+        (is (= 1 (:n-p-warn (first cmp))))))))
+
 (deftest log-lik-cols-orders-by-index
   (testing "columns extracted and sorted by 1-based observation index"
     (let [draws (tc/dataset {"alpha"       [0.0 0.0]

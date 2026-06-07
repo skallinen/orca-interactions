@@ -56,9 +56,11 @@
 
 (defn waic
   "WAIC from a seq of pointwise log-lik columns (each = the S draws for one
-   observation). Returns {:elpd-waic :p-waic :waic :se :n :n-draws :pointwise},
-   where :pointwise is the per-observation elpd (for `compare`'s Δ standard
-   error)."
+   observation). Returns {:elpd-waic :p-waic :waic :se :n :n-draws :pointwise
+   :n-p-warn}, where :pointwise is the per-observation elpd (for `compare`'s Δ
+   standard error) and :n-p-warn is the count of observations with pointwise
+   p_waic > 0.4 — the regime where WAIC is unreliable and tends to diverge from
+   PSIS-LOO (the substitution this namespace makes; see ns docstring)."
   [cols]
   (let [cols   (vec cols)
         n      (count cols)
@@ -77,6 +79,7 @@
      :se        (if (> n 1) (Math/sqrt (* n (var1 (map :elpd elpd-i)))) Double/NaN)
      :n         n
      :n-draws   s
+     :n-p-warn  (count (filter #(> (:p %) 0.4) elpd-i))
      :pointwise (mapv :elpd elpd-i)}))
 
 (defn waic-of
@@ -89,24 +92,35 @@
 (defn compare
   "Compare models given `name->waic` (model name → `waic` result map). Returns a
    vector of rows sorted best-first (highest elpd_waic), each:
-     {:name :elpd-waic :p-waic :waic :d-elpd :d-se :se}
+     {:name :elpd-waic :p-waic :waic :d-elpd :d-se :se :n-p-warn}
    where :d-elpd is (best − model) elpd (0 for the best), :d-se its standard
-   error (sqrt(N·var_i(Δ_i)), 0 for the best), and :se the model's own WAIC SE.
-   Requires all models share the same N observations (same complete-case set)."
+   error (sqrt(N·var_i(Δ_i)), 0 for the best), :se the model's own WAIC SE, and
+   :n-p-warn the count of observations with pointwise p_waic > 0.4 (a nonzero
+   value flags the WAIC-unreliable regime — see `waic`).
+   Requires all models share the same N observations (same complete-case set);
+   the elementwise Δ_i = best − model would otherwise silently truncate to the
+   shorter pointwise vector — so a mismatch throws `ex-info` naming the models."
   [name->waic]
-  (let [entries (map (fn [[nm w]] (assoc w :name nm)) name->waic)
-        sorted  (reverse (sort-by :elpd-waic entries))
-        best-pw (:pointwise (first sorted))]
-    (mapv (fn [w]
-            (let [d-pw (mapv - best-pw (:pointwise w))
-                  d    (reduce + d-pw)
-                  n    (:n w)]
-              {:name      (:name w)
-               :elpd-waic (:elpd-waic w)
-               :p-waic    (:p-waic w)
-               :waic      (:waic w)
-               :se        (:se w)
-               :d-elpd    d
-               :d-se      (if (or (zero? d) (< n 2)) 0.0
-                              (Math/sqrt (* n (var1 d-pw))))}))
-          sorted)))
+  (let [entries (mapv (fn [[nm w]] (assoc w :name nm)) name->waic)
+        shapes  (mapv (fn [{nm :name :keys [n pointwise]}]
+                        {:name nm :n n :pointwise (count pointwise)})
+                      entries)]
+    (when-not (apply = (map (juxt :n :pointwise) shapes))
+      (throw (ex-info "WAIC compare requires all models share N and pointwise length"
+                      {:models shapes})))
+    (let [sorted  (reverse (sort-by :elpd-waic entries))
+          best-pw (:pointwise (first sorted))]
+      (mapv (fn [w]
+              (let [d-pw (mapv - best-pw (:pointwise w))
+                    d    (reduce + d-pw)
+                    n    (:n w)]
+                {:name      (:name w)
+                 :elpd-waic (:elpd-waic w)
+                 :p-waic    (:p-waic w)
+                 :waic      (:waic w)
+                 :se        (:se w)
+                 :n-p-warn  (:n-p-warn w)
+                 :d-elpd    d
+                 :d-se      (if (or (zero? d) (< n 2)) 0.0
+                                (Math/sqrt (* n (var1 d-pw))))}))
+            sorted))))
