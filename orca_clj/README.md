@@ -97,3 +97,35 @@ Endpoints, headers, worker count, retries and CSV column orderings live under
 - **Model comparison is WAIC** (`orca.waic`), validated on the M3-vs-M4
   ordering. M3 is preferred; M4 adds no credible effects.
 - **Convergence gate:** R̂ < 1.01, ESS > 400, 0 divergences.
+
+### Known intentional gaps (not regenerated)
+
+A blog reader should not assume every number in the two posts is recomputed here.
+These are deliberate, documented boundaries:
+
+- **Time-of-day × risk-factor interaction model is NOT ported.** Both posts
+  describe a 4-rate stratified Poisson model (e.g. Black antifoul 2.1× day /
+  2.4× night, Motoring 4.1× / 5.5×, interaction ratios ≈ 1). `orca.timeofday`
+  reproduces only the single overall night/day rate ratio, **0.56 [0.43, 0.72]**.
+  The interaction analysis was a robustness check whose null result *licenses*
+  applying that single ratio as a uniform multiplier; its confidence intervals
+  are **not** regenerated. Port it into `orca.timeofday` if that section ever
+  needs reproducing.
+- **Historical night coefficient (+2.06, OR ≈ 7.8×) is not reproduced
+  numerically — by design.** That is the *original* with-daylight finding that
+  was then removed. `orca.encoding` / `stan/m3_daylight.stan` reproduces the
+  qualitative *direction-flip* story (β_daylight ≈ −1.09 under encoding A vs
+  +1.57 under B), but the tighter ladder priors + full controls shrink the
+  magnitude. The committed oracle is not regenerated; the +2.06 figure is
+  historical narrative.
+- **Absolute night/day exposure totals.** The exposure integration uses a
+  200 h (~8-day) max-passage cut (`config.edn :max-passage-hours`) that drops
+  multi-month data-entry "passages". This reconciles the totals with the
+  published model (night 4,280 / day 7,933 yacht-hours; 11.8 / 20.9 per 1,000 h),
+  and the load-bearing rate ratio (0.56) is preserved either way.
+- **Risk scenarios are relative, not absolute configs.** `orca.models/risk-scenarios`
+  marginalizes the categorical offsets (antifoul/sailing/hull/rudder) at their
+  prior-centered mean of 0, so the printed `P=x%` is an average-category vessel.
+  Per the blog, treat these as **ordinal** comparisons across scenarios; named
+  absolute risk for a concrete configuration is the in-browser calculator's job
+  (`index.html`, out of scope — already ClojureScript).

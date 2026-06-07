@@ -72,8 +72,10 @@ must run end-to-end at least once per phase.
 - `orca.stan/compile-model` runs `make -C $CMDSTAN <abs-model-path>`; `make` only
   recompiles when the `.stan` is newer than its executable. First compile rebuilds
   the PCH (~3–5 min); later compiles are fast.
-- Every fittable model carries `generated quantities { vector[N] log_lik; }` so
-  `orca.waic` can consume pointwise log-likelihood.
+- Every model `orca.waic` compares carries `generated quantities { vector[N]
+  log_lik; }` so WAIC can consume pointwise log-likelihood (the ladder rungs
+  m0–m4). Models outside WAIC — `m3_prior` (sensitivity), `rate` (Poisson
+  exposure), `recovery` (parameter recovery) — legitimately omit it.
 
 ## Diagnostics & numerics conventions
 
