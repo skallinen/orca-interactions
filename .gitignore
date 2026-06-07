@@ -1,0 +1,12 @@
+# Python
+bayesian_env/
+__pycache__/
+*.pyc
+
+# Clojure / tooling caches
+.clj-kondo/.cache/
+.lsp/.cache/
+.cpcache/
+
+# OS
+.DS_Store
