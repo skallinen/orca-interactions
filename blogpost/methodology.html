@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Technical Methodology: Bayesian Orca Interaction Analysis</title>
+  <meta name="description" content="Step-by-step technical methodology for the Bayesian logistic regression model predicting orca interactions with yachts off the Iberian coast.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,300;8..60,400;8..60,600;8..60,700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #faf9f7;
+      --text: #1a1a1a;
+      --text-secondary: #555;
+      --accent: #1e5799;
+      --accent-light: #e8f0fe;
+      --red: #c0392b;
+      --green: #27ae60;
+      --orange: #e67e22;
+      --border: #ddd;
+      --code-bg: #f0eeeb;
+      --card-bg: #fff;
+      --serif: 'Source Serif 4', Georgia, serif;
+      --sans: 'Inter', -apple-system, sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+      --max-width: 720px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--serif);
+      font-size: 19px;
+      line-height: 1.72;
+      color: var(--text);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    header {
+      padding: 80px 0 48px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 48px;
+    }
+    header .container { max-width: 800px; }
+    h1 {
+      font-size: 2.2em;
+      line-height: 1.2;
+      font-weight: 700;
+      margin-bottom: 16px;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      font-family: var(--sans);
+      font-size: 0.85em;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+    .meta {
+      font-family: var(--sans);
+      font-size: 0.75em;
+      color: #888;
+      margin-top: 16px;
+    }
+
+    article { padding-bottom: 120px; }
+
+    h2 {
+      font-size: 1.6em;
+      margin: 56px 0 20px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    h3 {
+      font-size: 1.2em;
+      margin: 40px 0 12px;
+      font-weight: 600;
+    }
+    h4 {
+      font-size: 1.0em;
+      margin: 28px 0 8px;
+      font-weight: 600;
+    }
+
+    p { margin-bottom: 20px; }
+    a { color: var(--accent); }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.82em;
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px 24px;
+      overflow-x: auto;
+      margin: 24px 0;
+      font-family: var(--mono);
+      font-size: 0.78em;
+      line-height: 1.6;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 24px 0;
+      font-size: 0.88em;
+      font-family: var(--sans);
+    }
+    th {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 2px solid var(--text);
+      font-weight: 600;
+      font-size: 0.85em;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    tr:last-child td { border-bottom: none; }
+    .num { text-align: right; font-family: var(--mono); font-size: 0.9em; }
+
+    .definition {
+      background: var(--accent-light);
+      border-left: 3px solid var(--accent);
+      padding: 16px 20px;
+      margin: 24px 0;
+      border-radius: 0 6px 6px 0;
+      font-size: 0.92em;
+    }
+    .definition strong {
+      font-family: var(--sans);
+      font-size: 0.9em;
+    }
+
+    .step-box {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin: 28px 0;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+    }
+    .step-box h4 {
+      font-family: var(--sans);
+      margin: 0 0 12px;
+      color: var(--accent);
+    }
+
+    .step-num {
+      font-family: var(--mono);
+      font-weight: 700;
+      color: var(--accent);
+      margin-right: 8px;
+    }
+
+    blockquote {
+      border-left: 3px solid var(--accent);
+      padding: 4px 0 4px 20px;
+      margin: 28px 0;
+      color: var(--text-secondary);
+      font-style: italic;
+    }
+
+    ul, ol { margin: 0 0 20px 20px; }
+    li { margin-bottom: 8px; }
+
+    .footnotes {
+      margin-top: 64px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      font-size: 0.82em;
+      color: var(--text-secondary);
+    }
+    .footnotes ol { padding-left: 20px; }
+    .footnotes li { margin-bottom: 8px; }
+
+    hr {
+      border: none;
+      text-align: center;
+      margin: 48px 0;
+    }
+    hr::after {
+      content: '• • •';
+      color: #ccc;
+      font-size: 1.2em;
+      letter-spacing: 8px;
+    }
+
+    sup { font-size: 0.65em; }
+    .footnote-ref { font-size: 0.7em; vertical-align: super; }
+
+    .back-link {
+      font-family: var(--sans);
+      font-size: 0.85em;
+      display: inline-block;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a href="index.html" class="back-link">&larr; Back to main analysis</a>
+    <h1>Technical Methodology</h1>
+    <p class="subtitle">Step-by-step documentation of the Bayesian analysis pipeline: data collection, encoding, model specification, diagnostics, and the time-of-day problem.</p>
+    <p class="meta">Companion to <a href="index.html">What Makes Orcas Interested in Your Boat?</a> &middot; June 2026</p>
+  </div>
+</header>
+
+<article>
+<div class="container">
+
+<h2>1. Data Collection</h2>
+
+<p>The Cruising Association maintains a public reporting system where skippers can file two types of reports: <strong>incident reports</strong> (an orca interaction occurred) and <strong>uneventful passage reports</strong> (the boat transited the affected zone without incident). Both forms collect the same set of variables.</p>
+
+<p>We collected all reports via the Cruising Association's public JSON API. The API exposes a report list endpoint and individual report detail endpoints. A Python script iterates through the report list, fetches each report's details, and stores them as structured JSON.</p>
+
+<pre>
+# API endpoints (public, no authentication required)
+REPORT_LIST = "https://orcas.cruising.org.uk/api/v1/reports"
+REPORT_DETAIL = "https://orcas.cruising.org.uk/api/v1/reports/{id}"
+
+# Rate limiting: 0.5s delay between requests
+# Output: all_reports_detailed.json (654 reports)
+</pre>
+
+<p>The dataset contains <strong>654 reports</strong>: 216 incidents and 438 uneventful passages. Each report records 20+ fields covering vessel characteristics, environmental conditions, and location.</p>
+
+<h2>2. Data Preparation</h2>
+
+<p>Raw reports required substantial cleaning. The two report types use different field names for some variables (e.g. <code>towing</code> vs <code>trailing</code>, <code>date_of_interaction</code> vs <code>date_passage_commenced</code>). The preparation script harmonises these into a single modelling-ready DataFrame.</p>
+
+<h3>Variable encoding</h3>
+
+<p>Variables fall into three types, each encoded differently following McElreath's <em>Statistical Rethinking</em> (Ch. 5):</p>
+
+<table>
+  <thead>
+    <tr><th>Type</th><th>Variables</th><th>Encoding</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Ordinal</td><td>Depth, distance, speed, boat length, wind, sea state</td><td>Integer scale (0, 1, 2, 3), then z-score standardised</td></tr>
+    <tr><td>Categorical</td><td>Sailing mode, antifoul colour, hull colour, rudder type</td><td>Index coded (0 to K-1), each category gets its own parameter</td></tr>
+    <tr><td>Binary</td><td>Autopilot on/off</td><td>0/1</td></tr>
+  </tbody>
+</table>
+
+<h4>Ordinal standardisation</h4>
+
+<p>Ordinal predictors are mapped to integers (e.g. depth: &lt;20m=0, 20-40m=1, 40-200m=2, 200m+=3), then standardised to zero mean and unit standard deviation. This puts all ordinal predictors on a comparable scale, which makes prior specification simpler: a Normal(0, 0.5) prior on a standardised predictor implies a belief that moving one standard deviation in the predictor changes the log-odds by at most about 1.</p>
+
+<pre>
+# Standardisation parameters (computed from full dataset)
+depth:    mean=1.708, sd=0.951
+distance: mean=1.355, sd=1.147
+speed:    mean=1.939, sd=0.450
+length:   mean=1.683, sd=0.815
+wind:     mean=0.994, sd=0.804
+sea:      mean=0.511, sd=0.601
+</pre>
+
+<h4>Categorical index coding</h4>
+
+<p>For categorical variables with K levels, we estimate K separate intercept offsets (not K-1 dummy variables). This follows McElreath's recommendation: it avoids privileging one category as the reference, and the priors are symmetric across all levels.</p>
+
+<table>
+  <thead>
+    <tr><th>Variable</th><th>Categories</th><th>Count</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Sailing mode</td><td>Hove-to, Motoring, Motorsailing, Sailing, Unknown</td><td class="num">5</td></tr>
+    <tr><td>Antifoul colour</td><td>Black, Blue, Coppercoat, Green, Other, Red, Unknown, White</td><td class="num">8</td></tr>
+    <tr><td>Hull colour</td><td>Dark, Unknown, White/light</td><td class="num">3</td></tr>
+    <tr><td>Rudder type</td><td>Full skeg, Long keel, Semi skeg, Spade, Twin rudder, Unknown</td><td class="num">6</td></tr>
+  </tbody>
+</table>
+
+<h4>Missing data</h4>
+
+<p>We use complete-case analysis. Any observation missing a value for any predictor in the model is excluded. This reduces the dataset from 654 to <strong>605 observations</strong>. The missing rate is low for most variables (under 5%); the highest is rudder type at 7%.</p>
+
+<h2>3. Causal Structure</h2>
+
+<p>Before specifying the model, we encoded domain knowledge as a causal directed acyclic graph (DAG). Variables were organized into layers:</p>
+
+<ul>
+  <li><strong>Layer 0 (Unobserved):</strong> Orca presence/activity (latent), location/route (partially observed via depth and distance)</li>
+  <li><strong>Layer 1 (Vessel, pre-treatment):</strong> Boat type, boat length, rudder, antifoul colour, hull colour</li>
+  <li><strong>Layer 2 (Activity):</strong> Sailing mode, speed, autopilot</li>
+  <li><strong>Layer 3 (Environment):</strong> Wind, sea state, depth, distance off land</li>
+  <li><strong>Layer 4 (Outcome):</strong> Interaction (binary)</li>
+</ul>
+
+<p>The DAG identifies two critical issues. First, geographic location is a strong confounder (it affects both orca presence and boat characteristics) but is only partially observable through depth and distance. Second, post-outcome variables like <code>damaged</code> and <code>tow_required</code> are colliders and must never be conditioned on.</p>
+
+<p>For predictive purposes (our primary goal), we include all observables. For causal interpretation, the DAG warns us that confounding by unobserved location means we can identify associations but not causal effects.</p>
+
+<h2>4. Model Specification</h2>
+
+<h3>Likelihood</h3>
+
+<p>The outcome is binary: interaction (y=1) or uneventful (y=0). We use a Bernoulli likelihood with a logit link:</p>
+
+<pre>
+y_i ~ Bernoulli(p_i)
+logit(p_i) = α + β_depth·depth_i + β_autopilot·autopilot_i + β_speed·speed_i
+             + β_length·length_i + β_distance·distance_i + β_wind·wind_i
+             + β_sea·sea_i + α_sailing[sailing_i] + α_antifoul[antifoul_i]
+             + α_hull[hull_i] + α_rudder[rudder_i]
+</pre>
+
+<p>This is a standard logistic regression with 30 parameters: one intercept (α), seven continuous/ordinal coefficients (β), and 22 category-level offsets (5 sailing modes + 8 antifoul colours + 3 hull colours + 6 rudder types).</p>
+
+<h3>Priors</h3>
+
+<p>We follow the weakly informative prior strategy from <em>Statistical Rethinking</em> (Ch. 11). During model building (M0-M4), we used a Fermi-informed intercept prior. For the final refitted model (without daylight), we relaxed to a wider prior:</p>
+
+<pre>
+# Model building phase (M0-M4)
+α ~ Normal(-3.5, 0.6)     # Fermi: logit(0.025) ≈ -3.66
+                           # Spans ~1% to ~7% at ±2 SD
+
+# Final refitted model (M3 without daylight)
+α ~ Normal(-1, 1)         # Wider, less informative
+                           # Lets data determine the intercept
+
+# Ordinal/binary coefficients
+β_depth     ~ Normal(0, 1)    # wider: depth expected to matter
+β_autopilot ~ Normal(0, 1)    # wider: autopilot expected to matter
+β_speed     ~ Normal(0, 0.5)  # standard regularising prior
+β_length    ~ Normal(0, 0.5)
+β_distance  ~ Normal(0, 0.5)
+β_wind      ~ Normal(0, 0.5)
+β_sea       ~ Normal(0, 0.5)
+
+# Category offsets
+α_sailing[k]  ~ Normal(0, 0.5)  for k = 1..5
+α_antifoul[k] ~ Normal(0, 0.5)  for k = 1..8
+α_hull[k]     ~ Normal(0, 0.5)  for k = 1..3
+α_rudder[k]   ~ Normal(0, 0.5)  for k = 1..6
+</pre>
+
+<p>The sensitivity analysis confirmed that the slope coefficients (all the relative risk factors) are robust across different intercept priors. Only the absolute risk level changes. We tested four intercept priors ranging from Normal(-4.5, 0.6) to Normal(0, 1.5) and found negligible differences in slope posteriors.</p>
+
+<h3>Prior predictive simulation</h3>
+
+<p>Before fitting, we simulated predictions from the prior to verify that the prior puts probability mass on reasonable interaction rates. With these priors, the prior predictive distribution covers rates from near 0% to near 100%, centred around 25-35%, consistent with our pre-data expectations.</p>
+
+<h3>Model building sequence</h3>
+
+<p>We built five models of increasing complexity, following McElreath's recommendation to add predictors in stages:</p>
+
+<table>
+  <thead>
+    <tr><th>Model</th><th>Predictors</th><th>Parameters</th><th>Purpose</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>M0</td><td>Intercept only</td><td class="num">1</td><td>Base rate</td></tr>
+    <tr><td>M1</td><td>+ boat length, hull colour, rudder, antifoul</td><td class="num">18</td><td>Vessel characteristics</td></tr>
+    <tr><td>M2</td><td>+ sailing mode, autopilot, speed</td><td class="num">25</td><td>Activity state</td></tr>
+    <tr><td>M3</td><td>+ depth, distance, wind, sea state</td><td class="num">30</td><td>Environmental conditions (primary model)</td></tr>
+    <tr><td>M4</td><td>+ moon, tide, cloud cover</td><td class="num">33</td><td>Extended model</td></tr>
+  </tbody>
+</table>
+
+<p>M3 is the primary model used for all results. M4 adds moon, tide, and cloud cover, which showed no credible effects and slightly worse predictive performance. Time of day was originally in M3 but was removed after the encoding analysis described below.</p>
+
+<h2>5. MCMC Sampling</h2>
+
+<p>All models are fitted using PyMC (v5) with the NUTS (No-U-Turn Sampler) algorithm:</p>
+
+<pre>
+# Sampling configuration
+Chains:      4
+Tune:        1,000 iterations per chain
+Draw:        2,000 iterations per chain
+Total draws: 8,000 (4 × 2,000)
+Seed:        42 (for reproducibility)
+</pre>
+
+<p>All four chains converged cleanly for M3. No divergences, no max treedepth warnings, and R-hat values were all within 0.01 of 1.0.</p>
+
+<h2>6. Case-Control Correction</h2>
+
+<p>The dataset contains 216 incidents and 438 uneventful passages, giving a sample interaction rate of 33%. The true population rate is much lower. We estimated the base rate at roughly 2-5% using a Fermi calculation:</p>
+
+<ul>
+  <li>~15,000 yacht transits per year through the affected zone (AIS estimates)</li>
+  <li>~300 reported interactions per year (GTOA data, 2020-2024 average)</li>
+  <li>Implied rate: ~2% (with substantial uncertainty)</li>
+</ul>
+
+<p>Because incident reports are over-represented relative to the population, the model's intercept is biased upward. We correct this using the King &amp; Zeng (2001) rare-events logistic regression offset:</p>
+
+<pre>
+offset = log(π / (1 - π)) - log(ȳ / (1 - ȳ))
+
+where:
+  π = true population base rate (user-adjustable, default 2.5%)
+  ȳ = sample rate (0.330)
+</pre>
+
+<p>This offset is added to the logit prediction at inference time. Crucially, it only shifts the intercept. All slope coefficients (the relative risk factors) are unaffected by the case-control ratio. This is a well-known property of logistic regression: the odds ratios are consistent even when the sampling proportions do not match the population proportions.</p>
+
+<h2>7. Time-of-Day Analysis</h2>
+
+<p>Time of day was originally included as a binary predictor (day=1, night=0) in the logistic regression. It appeared to be the strongest predictor, with a night coefficient of +2.06 on the log-odds scale (OR 7.8×). We removed it after discovering that the finding was an artifact of how the two groups record time differently.</p>
+
+<h3>The encoding problem</h3>
+
+<p>Incident reports record a single moment: the skipper selects "Day," "Night," "Dawn," or "Dusk" to describe when the interaction occurred. Uneventful passage reports record a time span: start and end times that may cover multiple periods ("Dawn, Day, Dusk, Night" for a 24-hour passage).</p>
+
+<p>Our initial encoding collapsed multi-period passages to "Day" (since they contained "Day" as one component). This left only 11 uneventful passages classified as night, creating an extreme class imbalance that inflated the night coefficient.</p>
+
+<h3>Sensitivity analysis</h3>
+
+<p>We tested three encoding strategies and found that the direction of the night effect depended entirely on the encoding choice:</p>
+
+<table>
+  <thead>
+    <tr><th>Encoding</th><th class="num">Night rate</th><th class="num">Day rate</th><th>Model result</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>A: Multi-period &rarr; day</td><td class="num">85.5%</td><td class="num">26.1%</td><td>Night 7.8× riskier</td></tr>
+    <tr><td>B: Any "Night" &rarr; night</td><td class="num">21.1%</td><td class="num">36.3%</td><td>Night 6× safer</td></tr>
+    <tr><td>C: Split into exposure windows</td><td class="num">27.1%</td><td class="num">28.1%</td><td>No difference</td></tr>
+  </tbody>
+</table>
+
+<h3>Exposure-based Bayesian rate model</h3>
+
+<p>Rather than forcing the ambiguous time variable into the logistic regression, we analysed time of day separately using an exposure-based approach. Both datasets contain actual timestamps: incident reports have a time of interaction; uneventful passages have start and end times.</p>
+
+<p>Using the <code>astral</code> Python library, we computed the solar position for each timestamp at a central location in the orca zone (37°N, 8°W) and classified each moment as Day, Night, Dawn, or Dusk based on astronomical twilight boundaries.</p>
+
+<p>For uneventful passages, we sampled the solar period at regular intervals between start and end times to compute total yacht-hours in daylight versus darkness. For incidents, we classified the single interaction timestamp.</p>
+
+<pre>
+# Bayesian Poisson rate model
+λ_night ~ Exponential(50)     # prior mean ≈ 0.02 per yacht-hour
+λ_day   ~ Exponential(50)
+
+y_night ~ Poisson(λ_night × T_night)  # 50 incidents, 4,280 yacht-hours
+y_day   ~ Poisson(λ_day × T_day)      # 166 incidents, 7,933 yacht-hours
+
+# Derived quantities
+rate_ratio = λ_night / λ_day
+</pre>
+
+<p>The posterior rate ratio is <strong>0.56 (89% CI: 0.43 to 0.72)</strong>, with 100% posterior probability that night has a lower incident rate. The result is insensitive to the prior (a flat Gamma(1,1) prior gives identical results).</p>
+
+<h3>Interaction tests</h3>
+
+<p>We extended the Poisson model to test whether risk factors behave differently at night versus day. The 4-rate model (e.g. night-black, night-other, day-black, day-other) showed no significant interactions:</p>
+
+<ul>
+  <li>Black antifoul effect: 2.1× day, 2.4× night (interaction ratio 1.2×, 89% CI spans 1.0)</li>
+  <li>Motoring effect: 4.1× day, 5.5× night (interaction ratio 1.4×, 89% CI spans 1.0)</li>
+</ul>
+
+<p>Because the effects are stable across time of day, the calculator applies the overall day/night rate ratio as a uniform scaling factor.</p>
+
+<h2>8. Confound Analysis</h2>
+
+<p>For each strong predictor, we tested whether its effect could be explained by correlation with other covariates.</p>
+
+<h3>Autopilot</h3>
+
+<p>Bayesian comparison of group means showed that autopilot-on boats are slightly shallower (96% posterior probability) but the difference in distance from land is uncertain (92%, credible interval spans zero). The controlled odds ratio (3.0×) is larger than the raw odds ratio (2.3×), indicating that the covariates were suppressing the autopilot signal, not creating it.</p>
+
+<h3>Black antifoul</h3>
+
+<p>Black-antifoul boats sail in deeper water (+0.31 SD, 89% CI: +0.17 to +0.44) and farther offshore (+0.30 SD, 89% CI: +0.17 to +0.43), both with 100% posterior certainty. The raw odds ratio of 3.9 drops to a controlled posterior odds ratio of 1.5 after accounting for all other variables. The confounds explain part of the raw effect, but a credible association remains.</p>
+
+<p>As an additional check, a single-predictor model with only antifoul colour yielded a Black vs Coppercoat contrast of +1.16 on the log-odds scale (89% CI: +0.72 to +1.60). The full model gives +1.00 (89% CI: +0.52 to +1.51), confirming the direction and strength are consistent with or without controls.</p>
+
+<h2>9. Posterior Export and Calculator</h2>
+
+<p>For the interactive calculator, we export 500 randomly sampled posterior draws (from the 8,000 total) as a JSON file. Each draw is a vector of 30 parameter values, preserving the full correlation structure between parameters.</p>
+
+<pre>
+# posterior_draws.json structure
+{
+  "n": 500,
+  "layout": ["alpha", "b_depth", "b_autopilot", "b_speed",
+             "b_length", "b_distance", "b_wind", "b_sea",
+             "s_0"..."s_4", "a_0"..."a_7", "h_0"..."h_2", "r_0"..."r_5"],
+  "categories": { ... },
+  "standardization": { ... },
+  "draws": [[0.123, 0.456, ...], ...]  // 500 × 30
+}
+</pre>
+
+<p>The calculator runs each of the 500 draws through the logistic function with the user's selected inputs, applies the King &amp; Zeng base-rate correction, applies the day/night rate ratio adjustment, and reports the median and 89% credible interval of the resulting 500 predictions.</p>
+
+<p>The day/night adjustment is multiplicative. The logistic regression predicts for the average time-of-day mix in the training data (65% day, 35% night by yacht-hours). The adjustment factors are:</p>
+
+<pre>
+# Day/night multiplicative adjustment
+# Rate ratio (night/day) = 0.56
+# Exposure fractions: 65% day, 35% night
+day_factor   = 1 / (0.65 + 0.35 × 0.56) = 1.182
+night_factor = 0.56 × day_factor          = 0.662
+</pre>
+
+<h2>10. Software and Reproducibility</h2>
+
+<table>
+  <thead>
+    <tr><th>Component</th><th>Version / Details</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Python</td><td>3.11+</td></tr>
+    <tr><td>PyMC</td><td>5.x (NUTS sampler)</td></tr>
+    <tr><td>ArviZ</td><td>Diagnostics and posterior summaries</td></tr>
+    <tr><td>astral</td><td>Solar position calculations for time-of-day analysis</td></tr>
+    <tr><td>pandas / NumPy / SciPy</td><td>Data manipulation</td></tr>
+    <tr><td>Scittle (ClojureScript)</td><td>In-browser interactive calculator</td></tr>
+    <tr><td>Random seed</td><td>42 (all sampling)</td></tr>
+  </tbody>
+</table>
+
+<p>All analysis scripts are in the project repository under <code>bayesian_orca/</code>. The pipeline runs in sequence: <code>scrape_orca_data.py</code> &rarr; <code>prepare_data.py</code> &rarr; <code>refit_no_daylight.py</code> (model fitting) &rarr; posterior draws exported to <code>blogpost/posterior_draws.json</code>.</p>
+
+<hr>
+
+<div class="footnotes">
+  <p>This is a companion document to <a href="index.html">What Makes Orcas Interested in Your Boat?</a>, which presents the findings for a general audience. All analysis code is available in the project repository.</p>
+</div>
+
+</div>
+</article>
+
+</body>
+</html>

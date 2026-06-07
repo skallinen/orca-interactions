@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What Makes Orcas Interested in Your Boat? A Bayesian Analysis</title>
+  <meta name="description" content="We collected 654 reports from the Cruising Association's public API, built a Bayesian logistic regression, and found that depth, time of day, motoring, and antifoul colour are the strongest predictors of orca interaction.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,300;8..60,400;8..60,600;8..60,700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #faf9f7;
+      --text: #1a1a1a;
+      --text-secondary: #555;
+      --accent: #1e5799;
+      --accent-light: #e8f0fe;
+      --red: #c0392b;
+      --green: #27ae60;
+      --orange: #e67e22;
+      --border: #ddd;
+      --code-bg: #f0eeeb;
+      --card-bg: #fff;
+      --serif: 'Source Serif 4', Georgia, serif;
+      --sans: 'Inter', -apple-system, sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+      --max-width: 720px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--serif);
+      font-size: 19px;
+      line-height: 1.72;
+      color: var(--text);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Header */
+    header {
+      padding: 80px 0 48px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 48px;
+    }
+    header .container {
+      max-width: 800px;
+    }
+    h1 {
+      font-size: 2.4em;
+      line-height: 1.2;
+      font-weight: 700;
+      margin-bottom: 16px;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      font-family: var(--sans);
+      font-size: 0.85em;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+    .meta {
+      font-family: var(--sans);
+      font-size: 0.75em;
+      color: #888;
+      margin-top: 16px;
+    }
+
+    /* Content */
+    article { padding-bottom: 120px; }
+
+    h2 {
+      font-size: 1.6em;
+      margin: 56px 0 20px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    h3 {
+      font-size: 1.2em;
+      margin: 40px 0 12px;
+      font-weight: 600;
+    }
+
+    p { margin-bottom: 20px; }
+
+    a { color: var(--accent); }
+
+    blockquote {
+      border-left: 3px solid var(--accent);
+      padding: 4px 0 4px 20px;
+      margin: 28px 0;
+      color: var(--text-secondary);
+      font-style: italic;
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.82em;
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    .figure {
+      margin: 36px 0;
+      text-align: center;
+    }
+    .figure img {
+      max-width: 100%;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .figure figcaption, figcaption {
+      font-family: var(--sans);
+      font-size: 0.75em;
+      color: var(--text-secondary);
+      margin-top: 8px;
+      text-align: center;
+    }
+
+    /* Definition boxes */
+    .definition {
+      background: var(--accent-light);
+      border-left: 3px solid var(--accent);
+      padding: 16px 20px;
+      margin: 24px 0;
+      border-radius: 0 6px 6px 0;
+      font-size: 0.92em;
+    }
+    .definition strong {
+      font-family: var(--sans);
+      font-size: 0.9em;
+    }
+
+    /* Data tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 24px 0;
+      font-size: 0.88em;
+      font-family: var(--sans);
+    }
+    th {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 2px solid var(--text);
+      font-weight: 600;
+      font-size: 0.85em;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    tr:last-child td { border-bottom: none; }
+    .num { text-align: right; font-family: var(--mono); font-size: 0.9em; }
+
+    /* Interactive calculator */
+    .calculator {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      margin: 40px 0;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+    }
+    .calculator h3 {
+      margin: 0 0 8px;
+      font-family: var(--sans);
+    }
+    .calculator p.calc-desc {
+      font-family: var(--sans);
+      font-size: 0.82em;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+    .calc-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 600px) {
+      .calc-grid { grid-template-columns: 1fr; }
+    }
+    .calc-field label {
+      display: block;
+      font-family: var(--sans);
+      font-size: 0.75em;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .calc-field select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: var(--sans);
+      font-size: 0.9em;
+      background: var(--bg);
+      cursor: pointer;
+    }
+    .result-box {
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 20px 24px;
+      text-align: center;
+    }
+    .result-number {
+      font-family: var(--mono);
+      font-size: 2.4em;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .result-label {
+      font-family: var(--sans);
+      font-size: 0.78em;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+    .result-bar-outer {
+      width: 100%;
+      height: 12px;
+      background: #e0e0e0;
+      border-radius: 6px;
+      margin-top: 12px;
+      overflow: hidden;
+    }
+    .result-bar-inner {
+      height: 100%;
+      border-radius: 6px;
+      transition: width 0.4s ease, background 0.4s ease;
+    }
+    .result-caveat {
+      font-family: var(--sans);
+      font-size: 0.7em;
+      color: #999;
+      margin-top: 12px;
+      text-align: center;
+    }
+
+    /* Base rate slider */
+    .base-rate-section {
+      background: #fef9e7;
+      border: 1px solid #f0d98c;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+    }
+    .base-rate-section label {
+      font-family: var(--sans);
+      font-size: 0.82em;
+      font-weight: 600;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .base-rate-section .slider-desc {
+      font-family: var(--sans);
+      font-size: 0.72em;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .slider-row input[type=range] {
+      flex: 1;
+      accent-color: var(--orange);
+      height: 6px;
+    }
+    .slider-row .slider-val {
+      font-family: var(--mono);
+      font-size: 1.1em;
+      font-weight: 600;
+      min-width: 50px;
+      text-align: right;
+      color: var(--orange);
+    }
+    .slider-row .slider-bounds {
+      font-family: var(--sans);
+      font-size: 0.7em;
+      color: #aaa;
+    }
+    .result-dual {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+    @media (max-width: 600px) {
+      .result-dual { grid-template-columns: 1fr; }
+    }
+    .result-dual .result-box { padding: 16px; }
+    .result-dual .result-number { font-size: 2em; }
+    .result-dual .result-sublabel {
+      font-family: var(--sans);
+      font-size: 0.68em;
+      color: #aaa;
+      margin-top: 2px;
+    }
+
+    /* Effect bars (SVG chart via Scittle) */
+    .chart-container {
+      margin: 36px 0;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+      overflow-x: auto;
+    }
+    .chart-title {
+      font-family: var(--sans);
+      font-weight: 600;
+      font-size: 0.95em;
+      margin-bottom: 4px;
+    }
+    .chart-subtitle {
+      font-family: var(--sans);
+      font-size: 0.72em;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    /* Fermi breakdown */
+    .fermi-box {
+      background: #fef9e7;
+      border: 1px solid #f0d98c;
+      border-radius: 8px;
+      padding: 24px;
+      margin: 28px 0;
+      font-size: 0.92em;
+    }
+    .fermi-box h4 {
+      font-family: var(--sans);
+      margin-bottom: 12px;
+    }
+    .fermi-step {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin: 8px 0;
+      font-family: var(--sans);
+      font-size: 0.9em;
+    }
+    .fermi-step .step-num {
+      font-family: var(--mono);
+      font-weight: 600;
+      color: var(--orange);
+      min-width: 24px;
+    }
+
+    /* Footnotes */
+    .footnote-ref { font-size: 0.7em; vertical-align: super; }
+    .footnotes {
+      margin-top: 64px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      font-size: 0.82em;
+      color: var(--text-secondary);
+    }
+    .footnotes ol { padding-left: 20px; }
+    .footnotes li { margin-bottom: 8px; }
+
+    /* Separator */
+    hr {
+      border: none;
+      text-align: center;
+      margin: 48px 0;
+    }
+    hr::after {
+      content: '• • •';
+      color: #ccc;
+      font-size: 1.2em;
+      letter-spacing: 8px;
+    }
+
+    sup { font-size: 0.65em; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <h1>What Makes Orcas Interested in Your Boat?</h1>
+    <p class="subtitle">We collected 654 crowdsourced reports from the Cruising Association's public API, estimated the base rate from first principles, and built a Bayesian model to find which factors actually predict orca interactions off the Iberian coast.</p>
+    <p class="meta">Sami Kallinen &middot; June 2026 &middot; Analysis of Cruising Association survey data</p>
+  </div>
+</header>
+
+<article>
+<div class="container">
+
+<figure class="figure" style="margin: 0 0 40px; width: 100vw; position: relative; left: 50%; right: 50%; margin-left: -50vw; margin-right: -50vw;">
+  <img src="orca_yacht.png" alt="Three orcas circling beneath the hull of a sailing yacht, photographed from below against the sunlit surface" style="width: 100%; max-height: 480px; object-fit: cover; display: block;">
+  <figcaption style="font-size: 0.6em; color: #888;">AI generated image</figcaption>
+</figure>
+
+<p>Since 2020, orcas in the waters between the Bay of Biscay and the Strait of Gibraltar have been interacting with sailing yachts. Sometimes they nudge the hull. Sometimes they damage the rudder. A few boats have sunk. The phenomenon gets a lot of press coverage, and skippers planning a transit through these waters want to know: what can I actually do to reduce my risk?</p>
+
+<p>The Cruising Association, a UK-based sailing organisation, runs a crowdsourced survey where skippers can report both orca interactions and uneventful passages through the affected zone. Both types of report record the same details: boat length, antifoul colour, rudder type, sailing mode, speed, water depth, wind, sea state, time of day, and more.</p>
+
+<p>We collected all 654 reports from their public API. 216 were incidents. 438 were uneventful. Then we built a statistical model to find which variables, if any, reliably distinguish the two groups.</p>
+
+<h2>The Approach: Comparing Two Groups</h2>
+
+<p>The core logic is simple. We have two piles of reports. In one pile, an orca showed up. In the other, it did not. Each report records a dozen or so details about the boat and conditions. If a variable's distribution looks different between the two piles, that variable might be associated with interactions.</p>
+
+<p>For example, take antifoul colour. Among boats with black antifoul, 45% had an interaction. Among Coppercoat boats, only 17% did. That is a large distributional difference. It suggests antifoul colour matters.</p>
+
+<p>Contrast that with speed. Both groups cluster around 5 to 7 knots. The distributions are nearly identical. Speed does not seem to distinguish the groups.</p>
+
+<p>The tricky part is that these variables are correlated with each other. Black-antifoul boats might also be in deeper water. Is the antifoul effect real, or is it just a proxy for location? A simple comparison of one variable at a time cannot disentangle this. We need a model that considers all variables simultaneously.</p>
+
+<h2>A One-Paragraph Explanation of What the Model Does</h2>
+
+<p>We used a logistic regression, which is a standard tool for binary outcomes (something either happened or it did not). The model takes all the predictor variables as inputs and outputs a number between 0 and 1, which represents the predicted probability of an interaction. For each predictor, the model learns a coefficient: a number that tells you how much that predictor shifts the probability up or down, after accounting for all other predictors. A positive coefficient means "associated with more interactions." A negative one means "associated with fewer." A coefficient near zero means "this variable does not help distinguish the groups once you account for everything else."</p>
+
+<div class="definition">
+  <strong>Probability of interaction, P(interaction):</strong> A number between 0 and 1 expressing how likely an interaction is. 0 means impossible. 1 means certain. 0.05 means a 5% chance. In our model, every combination of boat and conditions gets its own predicted probability.
+</div>
+
+<h2>Why Bayesian?</h2>
+
+<p>We used the Bayesian flavour of logistic regression rather than the classical (frequentist) version. The practical difference is that a Bayesian model gives us a full distribution for each coefficient, not just a single point estimate. Instead of saying "the depth effect is 0.84," it says "the depth effect is most likely around 0.84, with a 89% chance of falling between 0.59 and 1.10." This range is called the credible interval.</p>
+
+<div class="definition">
+  <strong>89% credible interval:</strong> A range within which the true value falls with 89% probability, given the data and model. If the entire interval is above zero, we can be quite confident the effect is positive. If it spans zero, we cannot be sure there is any effect at all. (We use 89% rather than the conventional 95% following the recommendation in <em>Statistical Rethinking</em> by Richard McElreath, because there is nothing special about 95% and 89% is a prime number that reminds us the threshold is arbitrary.)
+</div>
+
+<p>The other advantage of Bayesian analysis is that we can encode prior knowledge. This matters here because our dataset has a serious problem.</p>
+
+<h2>The Selection Bias Problem</h2>
+
+<p>In our dataset, 33% of reports are incidents. That does not mean 33% of yachts transiting the area get an orca interaction. People who had an interaction are far more likely to fill out the survey. The true rate is much lower.</p>
+
+<p>If we naively fit the model to this dataset, the intercept (the baseline probability when all predictors are at their average values) will land somewhere around 33%. That is wildly wrong as an estimate of real-world risk. To fix this, we need an independent estimate of the true base rate.</p>
+
+<h2>The Fermi Estimation: How Many Yachts Actually Transit?</h2>
+
+<p>Enrico Fermi was a physicist famous for making reasonable estimates of quantities that seem impossible to pin down. "How many piano tuners are in Chicago?" You cannot look this up, but you can break it into smaller pieces that are each estimable, multiply them together, and get a useful ballpark.</p>
+
+<p>We need two numbers: how many orca interactions happen per year, and how many yacht transits happen per year. The ratio gives the base rate.</p>
+
+<h3>The numerator: interactions per year</h3>
+
+<p>This is the easier number. The GTOA (Grupo Trabajo Orca Atlantica) tracks reported interactions. Their consolidated data, confirmed by CEMMA and various news sources, gives us:</p>
+
+<table>
+  <thead><tr><th>Year</th><th class="num">Reported interactions</th></tr></thead>
+  <tbody>
+    <tr><td>2020 (Jul-Nov only)</td><td class="num">~52</td></tr>
+    <tr><td>2021</td><td class="num">~197</td></tr>
+    <tr><td>2022</td><td class="num">~207</td></tr>
+    <tr><td>2023</td><td class="num">~186</td></tr>
+    <tr><td>2024</td><td class="num">~125</td></tr>
+    <tr><td><strong>Total (Jul 2020 to 2024)</strong></td><td class="num"><strong>~807</strong></td></tr>
+  </tbody>
+</table>
+
+<p>One important caveat: reporting completeness dropped from 88.5% in 2020 to 34% in 2024, so recent years likely undercount actual interactions. For a typical full year, ~150 to 200 reported interactions is a reasonable central estimate.<sup class="footnote-ref">1</sup></p>
+
+<h3>The denominator: yacht transits per year</h3>
+
+<p>This is the hard number. No authority counts recreational yacht transits through the orca zone. We have to triangulate:</p>
+
+<div class="fermi-box">
+  <h4>Fermi Estimation Breakdown</h4>
+  <div class="fermi-step">
+    <span class="step-num">1.</span>
+    <span>The German sailing publication yacht.de stated that "only about 5% of yachts passing through the area are involved in an interaction." If there are ~200 interactions per year, that implies roughly <strong>4,000 yacht transits</strong> through the narrow hotspot zone around the Strait of Gibraltar.</span>
+  </div>
+  <div class="fermi-step">
+    <span class="step-num">2.</span>
+    <span>Las Palmas in the Canary Islands records ~1,200 visiting yachts per year. Many of these transited through the affected zone. This is a lower bound on just one downstream port.</span>
+  </div>
+  <div class="fermi-step">
+    <span class="step-num">3.</span>
+    <span>The broader affected zone extends from the Bay of Biscay down to Gibraltar. This wider area carries additional coastal traffic beyond the Gibraltar chokepoint.</span>
+  </div>
+  <div class="fermi-step">
+    <span class="step-num">4.</span>
+    <span>Multiple maritime sources describe the Strait as a "nautical motorway" for yachts. The total traffic through the Strait is ~100,000 to 120,000 vessels per year, but the vast majority are commercial ships.</span>
+  </div>
+  <div class="fermi-step">
+    <span class="step-num">∴</span>
+    <span><strong>Estimate: 5,000 to 10,000 yacht transits per year</strong> through any part of the orca-affected waters.</span>
+  </div>
+</div>
+
+<p>This gives us a base rate of roughly <strong>150 to 200 interactions out of 5,000 to 10,000 transits, or about 2 to 3%</strong>. The uncertainty is large. It could be as low as 1% or as high as 5%. We encoded this as an informative prior on the model's intercept: a normal distribution centred at the value corresponding to 3%, with enough spread to cover the 1% to 7% range.</p>
+
+<p>Is this estimate solid? No. The yacht.de "5%" figure is the only concrete anchor, and we do not know how they arrived at it. We ran a sensitivity analysis (more on this below) to check whether our conclusions depend on getting this number right.</p>
+
+<hr>
+
+<h2>What the Model Found</h2>
+
+<p>We fitted five progressively more complex models, adding predictors in stages. All five converged cleanly with no sampling problems. The primary model (M3) includes vessel characteristics, activity state, and environmental conditions. The full technical details, including model equations, priors, MCMC diagnostics, and the causal DAG, are documented in the <a href="methodology.html">technical methodology</a>.</p>
+
+<p>Four factors had coefficients whose 89% credible intervals did not cross zero. In plain language: the data provides strong evidence that these factors are associated with interaction risk, even after accounting for everything else in the model.</p>
+
+<div id="chart-effects" class="chart-container"></div>
+
+<h3>The variable we had to rethink: time of day</h3>
+
+<p><strong>Time of day</strong> initially appeared to be the strongest predictor. Under our first encoding, night passages showed an 85% interaction rate versus 26% for daytime. The model estimated night was 7.8 times riskier. But the finding did not survive scrutiny.</p>
+
+<p>The core problem is that the two groups measure time differently. Incident reports capture a single moment: the skipper records "Day" or "Night" when the interaction happened. Uneventful passage reports record a duration: the skipper enters a start time and end time, which might span 8 hours of daylight sailing or 30 hours covering day and night. This means we know <em>when interactions happen</em> but not <em>when the boats that had interactions were actually in the water</em>. And we know <em>when uneventful boats were in the water</em> but cannot assign them to a single time period.</p>
+
+<p>Different encodings of this ambiguous variable produce opposite conclusions:</p>
+
+<table>
+  <thead>
+    <tr><th>Encoding</th><th class="num">Night n</th><th class="num">Night incidents</th><th class="num">Night rate</th><th class="num">Day n</th><th class="num">Day incidents</th><th class="num">Day rate</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>A</strong>: Multi-period passages &rarr; day</td><td class="num">76</td><td class="num">65</td><td class="num"><strong>85.5%</strong></td><td class="num">578</td><td class="num">151</td><td class="num">26.1%</td></tr>
+    <tr><td><strong>B</strong>: Any mention of "Night" &rarr; night</td><td class="num">142</td><td class="num">30</td><td class="num">21.1%</td><td class="num">512</td><td class="num">186</td><td class="num"><strong>36.3%</strong></td></tr>
+    <tr><td><strong>C</strong>: Split into exposure windows</td><td class="num">177</td><td class="num">48</td><td class="num">27.1%</td><td class="num">598</td><td class="num">168</td><td class="num">28.1%</td></tr>
+  </tbody>
+</table>
+
+<p>Encoding A says night is extremely dangerous. Encoding B says day is riskier. Encoding C, which splits multi-period passages into separate day and night exposure windows, says there is no difference at all. Fitting the full Bayesian model under A and B produced a night coefficient that flipped sign entirely.</p>
+
+<p>But we can do better than these binary encodings. The uneventful passages have actual start and end timestamps, and we can compute how many yacht-hours were spent in daylight versus darkness using solar position calculations. This gives us the <em>exposure distribution</em>: the denominator we need. The incidents have exact timestamps too, so we know when each interaction occurred.</p>
+
+<p>The result: uneventful passages spent 35% of their total yacht-hours in darkness. But only 23% of incidents happened at night. We fitted a Bayesian Poisson rate model to quantify this: the incident rate is 11.8 per 1,000 yacht-hours at night versus 20.9 during the day. The posterior rate ratio is <strong>0.56 (89% CI: 0.43 to 0.72)</strong>, meaning roughly half as many incidents per yacht-hour at night compared to daytime, with 100% posterior certainty that night is safer. The result is insensitive to the prior.</p>
+
+<p>This makes some intuitive sense. Orcas are visual predators. They may be more active, or more likely to notice and approach a boat, during daylight hours. Alternatively, it could reflect differences in sailing patterns: night passages may follow different routes or be further offshore.</p>
+
+<p>A natural follow-up: do the other risk factors behave differently at night? If orcas rely on vision to spot boats, the visual contrast of black antifoul might matter less in darkness. We extended the Poisson rate model to cross-tabulate time of day with antifoul colour and sailing mode, computing separate incident rates per yacht-hour for each combination:</p>
+
+<table>
+  <thead>
+    <tr><th>Factor</th><th class="num">Effect during day</th><th class="num">Effect at night</th><th class="num">Interaction ratio</th><th>Interpretation</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Black antifoul (vs other)</td><td class="num">2.1&times; (89% CI: 1.6 to 2.6)</td><td class="num">2.4&times; (89% CI: 1.5 to 3.5)</td><td class="num">1.2&times; (89% CI: 0.7 to 1.8)</td><td>Same effect day and night</td></tr>
+    <tr><td>Motoring (vs other)</td><td class="num">4.1&times; (89% CI: 3.1 to 5.3)</td><td class="num">5.5&times; (89% CI: 3.2 to 8.5)</td><td class="num">1.4&times; (89% CI: 0.8 to 2.2)</td><td>Same effect day and night</td></tr>
+  </tbody>
+</table>
+
+<p>The interaction ratios are close to 1.0 and both credible intervals comfortably span it. Black antifoul doubles the incident rate regardless of whether it is day or night. If the mechanism were purely visual, we might expect the effect to weaken in darkness. The fact that it does not suggests either the mechanism is not visual, or orcas detect boats through other senses (acoustics, hydrodynamics) where colour still correlates with some relevant property.</p>
+
+<p>Because these effects are stable across time of day, the calculator below applies the day/night rate ratio as a uniform scaling factor on top of the logistic regression. This is valid precisely because the interaction terms are negligible.</p>
+
+<p>We dropped time of day from the logistic regression model because the binary day/night variable cannot be reliably encoded for both groups simultaneously. The exposure-based analysis above is a separate and cleaner calculation. The remaining model coefficients barely changed when we removed it, confirming it was not confounding the other findings.</p>
+
+<h3>The strong effects</h3>
+
+<p><strong>Autopilot off</strong> is the single strongest predictor: turning off the autopilot is associated with 3.0 times the odds of interaction (or equivalently, autopilot on cuts the odds to a third). The MBA study actually found autopilot increased risk. Our model disagrees. One might suspect a confound: perhaps autopilot users sail further offshore, away from hotspots. We checked with a Bayesian comparison of group means: autopilot-on boats are slightly shallower (96% posterior probability) but the difference in distance from land is uncertain (92%, credible interval spans zero). The controlled effect (OR 3.0) is actually larger than the raw effect (OR 2.3), meaning these covariates were suppressing the autopilot signal, not creating it. The mechanism remains unclear.</p>
+
+<p><strong>Water depth</strong> is the second strongest. Interactions are concentrated in deeper water (200m+). Each standard deviation increase in depth category corresponds to a 2.6x increase in odds. Depth here likely proxies for location rather than depth itself: the orca hotspots (strait approaches, offshore migration routes) happen to be in deeper water, while shallower coastal passages are less exposed.</p>
+
+<p><strong>Motoring</strong> carries 1.9 times the odds of an interaction compared to motorsailing or sailing. The MBA (Marine Biological Association) published a similar finding in 2024, noting that motors produce underwater noise at frequencies orcas can hear.<sup class="footnote-ref">2</sup></p>
+
+<p><strong>Black antifoul paint</strong> is associated with 1.5 times the odds of interaction compared to the average. The contrast with Coppercoat is striking: black antifoul carries 2.6 times the odds of Coppercoat, with 99.9% posterior certainty. The mechanism is unclear. It could be visual (orcas seeing a dark underwater surface), acoustic (different paint textures producing different hydrodynamic noise), or simply a confound we have not identified.</p>
+
+<div id="chart-antifoul" class="chart-container"></div>
+
+<h3>Validating the antifoul finding</h3>
+
+<p>The black antifoul result surprised us. The Cruising Association has collected this data for years, and researchers have generally dismissed antifoul colour as coincidental. A web search turns up the consensus view: "no scientific evidence supports the theory that the colour of antifouling paint acts as a trigger." The MBA's 2024 logistic regression did not include antifoul colour as a predictor.</p>
+
+<p>So we ran a thorough validation. First, the raw numbers. This table shows how antifoul colours are distributed across the two groups:</p>
+
+<table>
+  <thead>
+    <tr><th>Antifoul colour</th><th class="num">Incidents</th><th class="num">Uneventful</th><th class="num">Interaction rate</th><th class="num">Share of incidents</th><th class="num">Share of uneventful</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Black</strong></td><td class="num">97</td><td class="num">121</td><td class="num"><strong>44.5%</strong></td><td class="num"><strong>44.9%</strong></td><td class="num">27.6%</td></tr>
+    <tr><td>Blue</td><td class="num">57</td><td class="num">134</td><td class="num">29.8%</td><td class="num">26.4%</td><td class="num">30.6%</td></tr>
+    <tr><td>Coppercoat</td><td class="num">16</td><td class="num">78</td><td class="num">17.0%</td><td class="num">7.4%</td><td class="num">17.8%</td></tr>
+    <tr><td>Red</td><td class="num">15</td><td class="num">35</td><td class="num">30.0%</td><td class="num">6.9%</td><td class="num">8.0%</td></tr>
+    <tr><td>White</td><td class="num">14</td><td class="num">44</td><td class="num">24.1%</td><td class="num">6.5%</td><td class="num">10.0%</td></tr>
+  </tbody>
+</table>
+
+<p>The last two columns are the distributional comparison the model picks up. Black antifoul makes up 44.9% of incident reports but only 27.6% of uneventful passages. That 17 percentage point gap is large. Coppercoat goes the other direction: 7.4% of incidents vs 17.8% of uneventful. Blue is nearly proportional between the two groups.</p>
+
+<p>This is not a small-sample fluke. Black is the most common antifoul in the dataset (218 of 654 reports), so we have plenty of observations on both sides.</p>
+
+<p>We then checked for confounds. A Bayesian comparison of group means shows that black-antifoul boats sail in deeper water (+0.31 SD, 89% CI: +0.17 to +0.44) and farther offshore (+0.30 SD, 89% CI: +0.17 to +0.43), both with 100% posterior certainty. Since depth and distance are independent risk factors, part of the raw Black effect is explained by where those boats sail, not the paint itself. The raw odds ratio is 3.9 (Black vs non-Black, unadjusted). After the multivariate model controls for depth, distance, sailing mode, autopilot, and everything else, the posterior odds ratio drops to 1.5 (89% CI entirely above 1.0). The confounds explain some of the raw gap, but a credible effect remains.</p>
+
+<p>As a final check, we fitted a single-predictor model with only antifoul colour and no other variables. The Black vs Coppercoat contrast came out at +1.16 on the log-odds scale (89% CI: +0.72 to +1.60), with 100% posterior certainty that Black exceeds Coppercoat. The full model gives +1.00 (89% CI: +0.52 to +1.51), slightly smaller because depth and distance absorb some of the effect. Both models agree on the direction and strength.</p>
+
+<p>Why has this been dismissed? Probably because prior analyses looked at whether the proportion of Black antifoul among incidents matches "the general mix of boat colours in those waters." That framing asks the wrong question. It compares incidents to the general fleet. We compare incidents to uneventful passages through the same waters, reported through the same survey, which is a much cleaner comparison. The distributional gap is clear.</p>
+
+<p>We still cannot say Black antifoul causes interactions. Possible explanations include visual contrast underwater, differences in hydrodynamic noise from different paint textures, or an unmeasured confound. The data shows a robust statistical association. The mechanism remains unknown.</p>
+
+<h3>The non-effects</h3>
+
+<p>Several variables that sailors commonly discuss showed no credible association with interactions:</p>
+
+<table>
+  <thead><tr><th>Factor</th><th class="num">Coefficient</th><th class="num">89% CI</th><th>Verdict</th></tr></thead>
+  <tbody>
+    <tr><td>Boat length</td><td class="num">+0.04</td><td class="num">[-0.13, +0.21]</td><td>No effect</td></tr>
+    <tr><td>Speed</td><td class="num">-0.06</td><td class="num">[-0.22, +0.11]</td><td>No effect</td></tr>
+    <tr><td>Wind speed</td><td class="num">-0.05</td><td class="num">[-0.24, +0.14]</td><td>No effect</td></tr>
+    <tr><td>Sea state</td><td class="num">-0.16</td><td class="num">[-0.35, +0.03]</td><td>Marginal (calmer seas trend toward more interactions)</td></tr>
+    <tr><td>Distance from land</td><td class="num">+0.21</td><td class="num">[-0.02, +0.44]</td><td>Marginal (farther offshore trends higher)</td></tr>
+    <tr><td>Rudder type</td><td class="num" colspan="2">All categories overlap</td><td>No effect</td></tr>
+  </tbody>
+</table>
+
+<p>The non-effects are just as informative as the effects. Many skippers believe speed matters ("go faster to escape the interaction zone"). The data does not support this. Both groups travel at similar speeds, and the model confirms that speed provides no distinguishing information once other variables are accounted for.</p>
+
+<hr>
+
+<h2>Interactive Risk Calculator</h2>
+
+<p>This calculator uses the fitted model coefficients to compute a predicted probability of interaction. The key addition is the base rate slider at the top. It applies the Fermi estimate we derived earlier to correct for the selection bias in the dataset.</p>
+
+<p>The correction works like this. In a logistic regression, the slope coefficients (how much each variable shifts the odds) are not affected by the ratio of cases to controls in the training data. They are the same whether 33% or 2% of the dataset are incidents. The intercept, on the other hand, absorbs the sampling ratio and needs to be shifted. The standard correction (King and Zeng, 2001) computes an offset from the ratio of the true base rate to the sample base rate, applied in log-odds space. Move the slider to see how different base rate assumptions change the absolute numbers while leaving the relative ordering of scenarios unchanged.</p>
+
+<div id="calculator" class="calculator">
+  <noscript>
+    <p>This interactive calculator requires JavaScript. Enable JavaScript to use it.</p>
+  </noscript>
+</div>
+
+<hr>
+
+<h2>Does the Fermi Estimate Matter? A Sensitivity Check</h2>
+
+<p>We were honest earlier: the base rate estimate (2 to 3%) rests on shaky ground. So we re-fitted the model four times, each with a different assumption about the true base rate:</p>
+
+<table>
+  <thead>
+    <tr><th>Prior assumption</th><th class="num">Base rate</th><th class="num">Depth effect</th><th class="num">Motoring effect</th><th class="num">Black antifoul</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Conservative</td><td class="num">~1%</td><td class="num">+0.84 ***</td><td class="num">+1.14 ***</td><td class="num">+0.71 ***</td></tr>
+    <tr><td>Central (our default)</td><td class="num">~3%</td><td class="num">+0.84 ***</td><td class="num">+1.04 ***</td><td class="num">+0.73 ***</td></tr>
+    <tr><td>Aggressive</td><td class="num">~5%</td><td class="num">+0.83 ***</td><td class="num">+0.98 ***</td><td class="num">+0.72 ***</td></tr>
+    <tr><td>Flat (no prior info)</td><td class="num">uninformative</td><td class="num">+0.82 ***</td><td class="num">+0.58 ***</td><td class="num">+0.68 ***</td></tr>
+  </tbody>
+</table>
+
+<p>The depth coefficient barely moves. The motoring and antifoul effects shift somewhat, but all remain statistically credible (marked ***) across every prior, including the completely uninformative one.</p>
+
+<p>The conclusion: the relative effects are robust. Our weak Fermi estimate affects the absolute risk predictions (the numbers the calculator shows) but not the directional findings about which factors increase or decrease risk.</p>
+
+<hr>
+
+<h2>What This Means for a Skipper</h2>
+
+<p>Based on the posterior evidence, if you are transiting orca-affected waters:</p>
+
+<p><strong>Sail if you can.</strong> Motoring carries 2.8 times the odds of sailing or motorsailing. If conditions allow, turn off the engine.</p>
+
+<p><strong>Consider your antifoul colour.</strong> Black antifoul is associated with double the interaction rate. Coppercoat appears protective. If you are re-antifouling before a transit, this data point is worth considering, though we cannot be certain the colour itself is the cause.</p>
+
+<p><strong>Do not worry too much about speed, boat length, or rudder type.</strong> The model found no credible effect for any of these.</p>
+
+<h2>Caveats</h2>
+
+<p>This is an observational analysis of self-reported data, not a controlled experiment. Correlation is not causation. The depth effect probably reflects location (continental shelf edge) rather than depth itself. The antifoul effect could be confounded by something we did not measure. Geographic location is the biggest uncontrolled variable: we do not know where the uneventful passages occurred, only where the incidents did.</p>
+
+<p>The absolute risk numbers from the calculator should be taken as rough ordinal comparisons ("this scenario is riskier than that one"), not as precise probabilities you can rely on for planning.</p>
+
+<p>With 654 observations and 18 predictors, we are not swimming in data. Some categories (green antifoul, hove-to) have fewer than 20 observations. The model appropriately expresses large uncertainty for these sparse categories.</p>
+
+<p>Despite these limitations, four independent factors (depth, motoring, antifoul, autopilot) showed credible effects that survived multiple-variable adjustment, prior sensitivity testing, and convergence diagnostics. A fifth factor (time of day) appeared strong but turned out to be an artifact of how the data was recorded. That kind of finding, where a careful check overturns an initial result, is arguably the most useful contribution of a structured analysis.</p>
+
+<hr>
+
+<div class="footnotes">
+  <h3>Notes and Sources</h3>
+  <ol>
+    <li>GTOA/CEMMA consolidated figures (2020 to 2024). Total of ~807 reported interactions. Reporting completeness estimates from Cruising Association annual summaries.</li>
+    <li>Moore, L. (2024). "Orca interactions with sailing yachts: a logistic regression analysis of 481 recorded voyages." Marine Biological Association. Key findings: depth (20 to 40m), motor use, and autopilot as significant predictors.</li>
+    <li>Data source: Cruising Association Orca Survey API (apinl.theca.org.uk). 654 total reports collected June 2026.</li>
+    <li>Analysis code and data preparation: PyMC 6.0.1, ArviZ 1.1.0, following the workflow described in McElreath, R. (2020). <em>Statistical Rethinking</em> (2nd ed.), CRC Press.</li>
+  </ol>
+</div>
+
+</div>
+</article>
+
+<!-- React (required by Scittle's Reagent plugin) -->
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<!-- Scittle: ClojureScript in the browser -->
+<script src="https://cdn.jsdelivr.net/npm/scittle@0.6.15/dist/scittle.js" type="application/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/scittle@0.6.15/dist/scittle.reagent.js" type="application/javascript"></script>
+
+<script type="application/x-scittle">
+(ns orca.blog
+  (:require [reagent.core :as r]
+            [reagent.dom :as rdom]))
+
+;; ═══════════════════════════════════════════════════════════
+;; POSTERIOR DRAWS (loaded from posterior_draws.json)
+;; True Bayesian prediction: 500 actual MCMC draws preserving
+;; the full correlation structure between all 30 parameters.
+;; ═══════════════════════════════════════════════════════════
+
+(def posterior-data (r/atom nil))
+(def sample-rate 0.330275)
+
+;; Load the posterior draws JSON on startup
+(-> (js/fetch "posterior_draws.json")
+    (.then #(.json %))
+    (.then #(reset! posterior-data (js->clj % :keywordize-keys true))))
+
+;; Standardization parameters
+(def std-params
+  {:depth    {:mean 1.708 :sd 0.951}
+   :distance {:mean 1.355 :sd 1.147}
+   :speed    {:mean 1.939 :sd 0.450}
+   :length   {:mean 1.683 :sd 0.815}
+   :wind     {:mean 0.994 :sd 0.804}
+   :sea      {:mean 0.511 :sd 0.601}})
+
+(defn standardize [raw-val param-key]
+  (let [{:keys [mean sd]} (get std-params param-key)]
+    (/ (- raw-val mean) sd)))
+
+(defn sigmoid [x]
+  (/ 1.0 (+ 1.0 (js/Math.exp (- x)))))
+
+;; King & Zeng (2001) intercept correction
+(defn king-zeng-offset [base-rate]
+  (- (js/Math.log (/ base-rate (- 1.0 base-rate)))
+     (js/Math.log (/ sample-rate (- 1.0 sample-rate)))))
+
+;; Category name -> index in the draw vector
+;; Layout: [alpha(0), b_depth(1), b_autopilot(2), b_speed(3),
+;;          b_length(4), b_distance(5), b_wind(6), b_sea(7),
+;;          s_0..s_4(8-12), a_0..a_7(13-20), h_0..h_2(21-23), r_0..r_5(24-29)]
+
+(def sailing-idx
+  {"Hove-to" 8 "Motoring" 9 "Motorsailing" 10 "Sailing" 11})
+
+(def antifoul-idx
+  {"Black" 13 "Blue" 14 "Coppercoat" 15 "Red" 18 "White" 20})
+
+(def hull-idx
+  {"Dark" 21 "White/light" 23})
+
+(def rudder-idx
+  {"Full skeg" 24 "Semi skeg" 26 "Spade" 27 "Twin rudder" 28})
+
+;; Day/night adjustment from Bayesian Poisson rate model (separate analysis).
+;; Rate ratio (night/day) = 0.56. Exposure fraction: 65% day, 35% night.
+;; The logistic regression predicts for the average time-of-day mix.
+;; day-adj   = 1 / (0.65 + 0.35*0.56) = 1.182  (day is riskier than average)
+;; night-adj = 0.56 * day-adj          = 0.662  (night is safer than average)
+(def daylight-adj {"Day" 1.182 "Night" 0.662 "Average" 1.0})
+
+;; Compute prediction from a single posterior draw
+(defn predict-from-draw [draw params base-rate]
+  (let [logit (+ (nth draw 0)  ;; alpha
+                 (* (nth draw 1) (standardize (:depth params) :depth))
+                 (* (nth draw 2) (:autopilot params))
+                 (* (nth draw 3) (standardize (:speed params) :speed))
+                 (* (nth draw 4) (standardize (:length params) :length))
+                 (* (nth draw 5) (standardize (:distance params) :distance))
+                 (* (nth draw 6) (standardize (:wind params) :wind))
+                 (* (nth draw 7) (standardize (:sea params) :sea))
+                 (nth draw (get sailing-idx (:sailing params) 10))
+                 (nth draw (get antifoul-idx (:antifoul params) 14))
+                 (nth draw (get hull-idx (:hull params) 23))
+                 (nth draw (get rudder-idx (:rudder params) 27))
+                 (king-zeng-offset base-rate))
+        p-avg (sigmoid logit)
+        adj (get daylight-adj (:daylight params) 1.0)]
+    ;; Apply day/night rate ratio as multiplicative adjustment
+    (min 1.0 (* p-avg adj))))
+
+;; Run all 500 posterior draws and return sorted predictions
+(defn mc-predictions [params base-rate]
+  (if-let [data @posterior-data]
+    (let [draws (:draws data)
+          preds (mapv #(predict-from-draw % params base-rate) draws)]
+      (sort preds))
+    ;; Fallback if JSON not loaded yet
+    [0.02]))
+
+(defn percentile [sorted-samples p]
+  (let [idx (min (dec (count sorted-samples))
+                 (max 0 (js/Math.floor (* p (count sorted-samples)))))]
+    (nth sorted-samples idx)))
+
+;; Point estimate using the mean of all draws (for reference scenario)
+(defn predict-p-mean [params base-rate]
+  (if-let [data @posterior-data]
+    (let [draws (:draws data)
+          preds (mapv #(predict-from-draw % params base-rate) draws)]
+      (/ (reduce + preds) (count preds)))
+    base-rate))
+
+;; ═══════════════════════════════════════════════════════════
+;; INTERACTIVE CALCULATOR
+;; ═══════════════════════════════════════════════════════════
+
+(def state (r/atom {:depth 2 :distance 2 :speed 2 :length 1
+                    :wind 1 :sea 0 :autopilot 1
+                    :daylight "Day"
+                    :sailing "Motorsailing" :antifoul "Blue"
+                    :hull "White/light" :rudder "Spade"
+                    :base-rate 2.5}))
+
+(defn select-field [label param-key options]
+  [:div.calc-field
+   [:label label]
+   [:select {:value (get @state param-key)
+             :on-change #(swap! state assoc param-key
+                           (let [v (.. % -target -value)]
+                             (if (number? (get @state param-key))
+                               (js/parseInt v)
+                               v)))}
+    (for [[v label] options]
+      ^{:key v} [:option {:value v} label])]])
+
+(defn bar-color [p]
+  (cond
+    (< p 0.04) "#27ae60"
+    (< p 0.10) "#f39c12"
+    :else      "#c0392b"))
+
+(defn format-pct [p]
+  (if (< p 0.01)
+    (str (.toFixed (* p 100) 1) "%")
+    (str (js/Math.round (* p 100)) "%")))
+
+(defn calculator-component []
+  (let [params @state
+        base-rate (/ (:base-rate params) 100.0)
+        ;; Monte Carlo: 500 draws from the posterior
+        sorted-preds (mc-predictions params base-rate)
+        p-median (percentile sorted-preds 0.50)
+        p-lo (percentile sorted-preds 0.055)
+        p-hi (percentile sorted-preds 0.945)
+        ;; Reference scenario: average values (all standardized to 0)
+        ref-params {:depth 1.708 :distance 1.355 :speed 1.939
+                    :length 1.683 :wind 0.994 :sea 0.511
+                    :autopilot 1 :daylight "Day"
+                    :sailing "Motorsailing" :antifoul "Blue"
+                    :hull "White/light" :rudder "Spade"}
+        p-ref (predict-p-mean ref-params base-rate)
+        risk-mult (if (> p-ref 0.001) (/ p-median p-ref) 1)
+        fmt (fn [p] (if (< p 0.01)
+                      (str (.toFixed (* p 100) 1) "%")
+                      (str (js/Math.round (* p 100)) "%")))
+        bar-lo (min (* p-lo 100) 100)
+        bar-hi (min (* p-hi 100) 100)
+        bar-med (min (* p-median 100) 100)]
+    [:div
+     [:h3 "Risk Calculator"]
+     [:p.calc-desc "Select your boat and passage conditions. This assumes you are transiting during orca season (roughly May to November, peaking July to September). Outside this window, interactions are very rare regardless of other factors."]
+
+     ;; Base rate slider
+     [:div.base-rate-section
+      [:label "Assumed true base rate (from Fermi estimate)"]
+      [:div.slider-desc "Our estimate: ~2-3% of yacht transits result in an interaction. Drag to explore how this assumption affects the absolute prediction."]
+      [:div.slider-row
+       [:span.slider-bounds "0.5%"]
+       [:input {:type "range" :min 0.5 :max 10 :step 0.5
+               :value (:base-rate params)
+               :on-change #(swap! state assoc :base-rate
+                             (js/parseFloat (.. % -target -value)))}]
+       [:span.slider-bounds "10%"]
+       [:span.slider-val (str (.toFixed (* base-rate 100) 1) "%")]]]
+
+     ;; Condition selectors
+     [:div.calc-grid
+      [select-field "Sailing mode" :sailing
+       [["Sailing" "Sailing"] ["Motorsailing" "Motorsailing"]
+        ["Motoring" "Motoring"] ["Hove-to" "Hove-to"]]]
+      [select-field "Antifoul colour" :antifoul
+       [["Blue" "Blue"] ["Black" "Black"] ["Red" "Red"]
+        ["White" "White"] ["Coppercoat" "Coppercoat"]]]
+      [select-field "Water depth" :depth
+       [[0 "< 20m"] [1 "20 - 40m"] [2 "40 - 200m"] [3 "200m+"]]]
+      [select-field "Distance off land" :distance
+       [[0 "0 - 2 nm"] [1 "2 - 5 nm"] [2 "5 - 10 nm"] [3 "10+ nm"]]]
+      [select-field "Speed" :speed
+       [[0 "0 - 2 kts"] [1 "3 - 4 kts"] [2 "5 - 7 kts"] [3 "8 - 11 kts"]]]
+      [select-field "Wind (Beaufort)" :wind
+       [[0 "F0-2"] [1 "F3-4"] [2 "F5-6"] [3 "F7+"]]]
+      [select-field "Time of day" :daylight
+       [["Day" "Daylight"] ["Night" "Night"] ["Average" "Average (unknown)"]]]
+      [select-field "Autopilot" :autopilot
+       [[1 "On"] [0 "Off"]]]
+      [select-field "Boat length" :length
+       [[0 "< 10m"] [1 "10 - 12.5m"] [2 "12.5 - 15m"] [3 "15m+"]]]
+      [select-field "Sea state" :sea
+       [[0 "Calm"] [1 "Moderate"] [2 "Rough"]]]]
+
+     ;; Result: relative risk multiplier (robust) + absolute estimate
+     [:div.result-box
+      ;; Relative risk - the most trustworthy number
+      [:div {:style {:display "flex" :align-items "baseline" :justify-content "center" :gap "8px"}}
+       [:div {:style {:font-family "JetBrains Mono, monospace"
+                      :font-size "2.8em" :font-weight "700"
+                      :color (bar-color p-median)}}
+        (str (.toFixed risk-mult 1) "\u00D7")]
+       [:div {:style {:font-family "Inter, sans-serif"
+                      :font-size "0.9em" :color "#666"}}
+        "relative to a typical transit"]]
+
+      [:div {:style {:font-family "Inter, sans-serif"
+                     :font-size "0.78em" :color "#999"
+                     :text-align "center" :margin-top "4px"}}
+       "Reference: motorsailing, blue antifoul, average depth/distance, daytime, autopilot on"]
+
+      ;; Saturation warning for extreme combinations
+      (when (> risk-mult 5)
+        [:div {:style {:font-family "Inter, sans-serif"
+                       :font-size "0.78em"
+                       :color "#c0392b"
+                       :text-align "center"
+                       :margin-top "10px"
+                       :padding "8px 12px"
+                       :background "#fef2f2"
+                       :border-radius "6px"}}
+         (str "This stacks " (js/Math.round risk-mult) " risk factors into one scenario. "
+              "The model assumes each factor multiplies the odds independently, "
+              "but in practice the effects likely saturate. "
+              "Treat the multiplier as directional (this is a high-risk combination) "
+              "rather than literal.")])
+
+      ;; Absolute estimate (secondary)
+      [:div {:style {:margin-top "16px" :padding-top "16px" :border-top "1px solid #eee"
+                     :text-align "center"}}
+       [:div {:style {:font-family "JetBrains Mono, monospace"
+                      :font-size "1.3em" :font-weight "600"
+                      :color "#999"}}
+        (fmt p-median)]
+       [:div {:style {:font-family "Inter, sans-serif"
+                      :font-size "0.78em" :color "#bbb"}}
+        (str "absolute estimate " (if (> risk-mult 5) "(unreliable at this level)" "(less certain)"))]
+       [:div {:style {:font-family "JetBrains Mono, monospace"
+                      :font-size "0.75em" :color "#ccc" :margin-top "4px"}}
+        (str "89% CI: " (fmt p-lo) " to " (fmt p-hi))]]
+
+      ;; Estimated total transits from Fermi
+      (let [interactions-per-year 200
+            total-transits (js/Math.round (/ interactions-per-year base-rate))]
+        [:div {:style {:font-family "Inter, sans-serif"
+                       :font-size "0.75em" :color "#aaa"
+                       :margin-top "10px" :padding-top "8px"
+                       :border-top "1px solid #eee" :text-align "center"}}
+         (str "At a " (.toFixed (* base-rate 100) 1) "% base rate, roughly "
+              (.toLocaleString total-transits) " yacht transits/year pass through orca waters.")])
+
+      ;; Caveat
+      [:div.result-caveat {:style {:margin-top "12px"}}
+       (str "The relative multiplier is the most robust output. It tells you how your scenario "
+            "compares to a typical transit and does not depend on the base rate assumption. "
+            "The absolute percentage requires both the Fermi estimate and the assumption that "
+            "risk factors combine multiplicatively, which likely overstates the probability "
+            "for extreme combinations.")]]]))
+
+;; ═══════════════════════════════════════════════════════════
+;; EFFECTS CHART (SVG bar chart)
+;; ═══════════════════════════════════════════════════════════
+
+(def effects-data
+  [{:name "Autopilot OFF"    :coeff 1.110  :or 3.03  :dir :risk   :ci-lo 0.73  :ci-hi 1.54}
+   {:name "Depth (per SD)"   :coeff 0.953  :or 2.59  :dir :risk   :ci-lo 0.71  :ci-hi 1.22}
+   {:name "Motoring"         :coeff 0.638  :or 1.89  :dir :risk   :ci-lo 0.17  :ci-hi 1.12}
+   {:name "Black antifoul"   :coeff 0.436  :or 1.55  :dir :risk   :ci-lo 0.06  :ci-hi 0.82}
+   {:name "Distance (per SD)":coeff 0.185  :or 1.20  :dir :maybe  :ci-lo -0.04 :ci-hi 0.41}
+   {:name "Sea state (per SD)" :coeff -0.169 :or 0.84 :dir :maybe :ci-lo -0.35 :ci-hi 0.02}
+   {:name "Boat length"      :coeff 0.077  :or 1.08  :dir :none   :ci-lo -0.08 :ci-hi 0.25}
+   {:name "Wind (per SD)"    :coeff -0.063 :or 0.94  :dir :none   :ci-lo -0.27 :ci-hi 0.13}
+   {:name "Speed (per SD)"   :coeff -0.009 :or 0.99  :dir :none   :ci-lo -0.18 :ci-hi 0.16}])
+
+(defn effects-chart []
+  (let [chart-w 660
+        chart-h (* (count effects-data) 40)
+        left-margin 140
+        center-x (+ left-margin (/ (- chart-w left-margin) 2))
+        scale (/ (- chart-w left-margin) 4.0)
+        bar-h 24]
+    [:div
+     [:div.chart-title "Model Coefficients: What Shifts the Odds?"]
+     [:div.chart-subtitle "Each bar shows the effect on log-odds of interaction. Red = increases risk. Blue = decreases risk. Grey = no credible effect."]
+     [:svg {:width chart-w :height (+ chart-h 40) :viewBox (str "0 0 " chart-w " " (+ chart-h 40))
+            :style {:max-width "100%" :height "auto"}}
+      ;; Zero line
+      [:line {:x1 center-x :y1 16 :x2 center-x :y2 (+ chart-h 16)
+              :stroke "#ccc" :stroke-width 1 :stroke-dasharray "4,3"}]
+      ;; Bars
+      (for [[i item] (map-indexed vector effects-data)]
+        (let [y (+ 20 (* i 40))
+              coeff (:coeff item)
+              ci-lo (:ci-lo item)
+              ci-hi (:ci-hi item)
+              bar-x (if (pos? coeff) center-x (+ center-x (* coeff scale)))
+              bar-w (js/Math.abs (* coeff scale))
+              color (case (:dir item)
+                      :risk  "#e74c3c"
+                      :prot  "#3498db"
+                      :maybe "#bdc3c7"
+                      :none  "#ddd")
+              ci-x1 (+ center-x (* ci-lo scale))
+              ci-x2 (+ center-x (* ci-hi scale))]
+          ^{:key (:name item)}
+          [:g
+           ;; Label
+           [:text {:x (- left-margin 8) :y (+ y (/ bar-h 2) 1)
+                   :text-anchor "end" :dominant-baseline "middle"
+                   :font-family "Inter, sans-serif" :font-size "12" :fill "#333"}
+            (:name item)]
+           ;; CI whisker
+           [:line {:x1 ci-x1 :y1 (+ y (/ bar-h 2)) :x2 ci-x2 :y2 (+ y (/ bar-h 2))
+                   :stroke color :stroke-width 2 :opacity 0.5}]
+           ;; Bar
+           [:rect {:x bar-x :y (+ y 4) :width (max bar-w 1) :height (- bar-h 8)
+                   :fill color :rx 3 :opacity 0.85}]
+           ;; OR label
+           [:text {:x (+ center-x (* coeff scale) (if (pos? coeff) 6 -6))
+                   :y (+ y (/ bar-h 2) 1)
+                   :text-anchor (if (pos? coeff) "start" "end")
+                   :dominant-baseline "middle"
+                   :font-family "JetBrains Mono, monospace" :font-size "10" :fill "#666"}
+            (str (when (pos? coeff) "+") (.toFixed coeff 2))]]))
+
+      ;; Axis labels
+      [:text {:x center-x :y (+ chart-h 36)
+              :text-anchor "middle"
+              :font-family "Inter, sans-serif" :font-size "11" :fill "#999"}
+       "← less risk    |    more risk →"]]]))
+
+;; ═══════════════════════════════════════════════════════════
+;; ANTIFOUL CHART
+;; ═══════════════════════════════════════════════════════════
+
+(def antifoul-data
+  [{:name "Black"      :coeff 0.711  :rate "44%"}
+   {:name "Blue"       :coeff 0.297  :rate "30%"}
+   {:name "Red"        :coeff 0.188  :rate "30%"}
+   {:name "White"      :coeff 0.166  :rate "24%"}
+   {:name "Coppercoat" :coeff -0.293 :rate "17%"}])
+
+(defn antifoul-chart []
+  (let [w 660 h 200 left-m 100
+        bar-h 28
+        max-val 1.0
+        scale (/ (- w left-m 60) (* 2 max-val))
+        center-x (+ left-m (* max-val scale))]
+    [:div
+     [:div.chart-title "Antifoul Colour and Interaction Risk"]
+     [:div.chart-subtitle "Model coefficient (effect on log-odds). Positive = more interactions than average. Includes raw interaction rate from data."]
+     [:svg {:width w :height h :viewBox (str "0 0 " w " " h)
+            :style {:max-width "100%" :height "auto"}}
+      [:line {:x1 center-x :y1 10 :x2 center-x :y2 (- h 10)
+              :stroke "#ccc" :stroke-width 1 :stroke-dasharray "4,3"}]
+      (for [[i item] (map-indexed vector antifoul-data)]
+        (let [y (+ 16 (* i 36))
+              c (:coeff item)
+              bar-x (if (pos? c) center-x (+ center-x (* c scale)))
+              bar-w (js/Math.abs (* c scale))
+              color (if (pos? c)
+                      (if (> c 0.5) "#c0392b" "#e67e22")
+                      "#27ae60")]
+          ^{:key (:name item)}
+          [:g
+           [:text {:x (- left-m 8) :y (+ y (/ bar-h 2))
+                   :text-anchor "end" :dominant-baseline "middle"
+                   :font-family "Inter, sans-serif" :font-size "13" :fill "#333"
+                   :font-weight (if (= (:name item) "Black") "600" "400")}
+            (:name item)]
+           [:rect {:x bar-x :y (+ y 3) :width (max bar-w 2) :height (- bar-h 6)
+                   :fill color :rx 3 :opacity 0.8}]
+           [:text {:x (+ center-x (* c scale) (if (pos? c) 8 -8))
+                   :y (+ y (/ bar-h 2))
+                   :text-anchor (if (pos? c) "start" "end")
+                   :dominant-baseline "middle"
+                   :font-family "JetBrains Mono, monospace" :font-size "11" :fill "#666"}
+            (str (when (pos? c) "+") (.toFixed c 2) "  (" (:rate item) " raw)")]]))
+      [:text {:x center-x :y (- h 2) :text-anchor "middle"
+              :font-family "Inter, sans-serif" :font-size "10" :fill "#aaa"}
+       "← protective   |   risk-increasing →"]]]))
+
+
+;; ═══════════════════════════════════════════════════════════
+;; MOUNT
+;; ═══════════════════════════════════════════════════════════
+
+(when-let [el (js/document.getElementById "calculator")]
+  (rdom/render [calculator-component] el))
+
+(when-let [el (js/document.getElementById "chart-effects")]
+  (rdom/render [effects-chart] el))
+
+(when-let [el (js/document.getElementById "chart-antifoul")]
+  (rdom/render [antifoul-chart] el))
+</script>
+
+</body>
+</html>
