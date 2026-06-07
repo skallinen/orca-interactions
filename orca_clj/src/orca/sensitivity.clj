@@ -22,6 +22,7 @@
    [orca.config :as config]
    [orca.diagnostics :as diag]
    [orca.models :as models]
+   [orca.params :as params]
    [orca.plot :as plot]
    [orca.prepare :as prep]
    [orca.stan :as stan]
@@ -50,11 +51,8 @@
   [xs]
   (let [[lo hi] (diag/eti xs)] {:mean (util/mean xs) :lo lo :hi hi}))
 
-(defn- cat-index [md cat-key cat-name]
-  (.indexOf (vec (get-in md [:categories cat-key])) cat-name))
-
-(defn- cat-col [draws family i]
-  (vec (draws (str family "." (inc i)))))
+(def ^:private cat-index params/cat-index)
+(def ^:private cat-col params/cat-col)
 
 (defn fit-prior
   "Fit the no-daylight M3 (stan/m3_prior.stan) with intercept prior N(mu, sd).
@@ -97,13 +95,10 @@
                          nm mean lo hi (Math/exp mean))))))
   (println "  Black vs Coppercoat contrast:")
   (doseq [{nm :name :keys [draws]} fits]
-    (let [bv (cat-col draws "alpha_antifoul" (cat-index md :antifoul "Black"))
-          cv (cat-col draws "alpha_antifoul" (cat-index md :antifoul "Coppercoat"))
-          d  (mapv - bv cv)
-          {:keys [mean lo hi]} (summ d)
-          pgt (/ (double (count (filter pos? d))) (count d))]
+    (let [{:keys [mean lo hi odds p-gt]}
+          (params/category-contrast draws md "alpha_antifoul" :antifoul "Black" "Coppercoat")]
       (println (format "    %-12s %+.3f [%+.3f, %+.3f] OR=%.2f P(Black>Copper)=%.1f%%"
-                       nm mean lo hi (Math/exp mean) (* 100 pgt))))))
+                       nm mean lo hi odds (* 100 p-gt))))))
 
 ;; ── plots ────────────────────────────────────────────────────────────────────
 

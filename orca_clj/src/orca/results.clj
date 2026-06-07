@@ -24,6 +24,7 @@
    [orca.config :as config]
    [orca.diagnostics :as diag]
    [orca.models :as models]
+   [orca.params :as params]
    [orca.prepare :as prep]
    [orca.stan :as stan]
    [orca.util :as util]))
@@ -34,17 +35,6 @@
   "An effect is credible when its 89% ETI excludes zero."
   [lo hi]
   (or (pos? lo) (neg? hi)))
-
-(defn- cat-index
-  "0-based position of category `cat-name` within metadata `cat-key`."
-  [md cat-key cat-name]
-  (.indexOf (vec (get-in md [:categories cat-key])) cat-name))
-
-(defn- cat-col
-  "Posterior draws of index family `family`'s 0-based category `i` (Stan emits
-   1-based columns family.1..family.K)."
-  [draws family i]
-  (vec (draws (str family "." (inc i)))))
 
 ;; ── coefficient & category tables ────────────────────────────────────────────
 
@@ -73,17 +63,10 @@
 
 ;; ── contrasts ────────────────────────────────────────────────────────────────
 
-(defn category-contrast
+(def category-contrast
   "Posterior contrast (category `a` − category `b`) within index `family`/`cat-key`:
    {:contrast :mean :lo :hi :odds :p-gt} where :p-gt = P(a > b)."
-  [draws md family cat-key a b]
-  (let [av (cat-col draws family (cat-index md cat-key a))
-        bv (cat-col draws family (cat-index md cat-key b))
-        d  (mapv - av bv)
-        [lo hi] (diag/eti d)
-        m  (util/mean d)]
-    {:contrast (str a " vs " b) :mean m :lo lo :hi hi :odds (Math/exp m)
-     :p-gt (/ (double (count (filter pos? d))) (count d))}))
+  params/category-contrast)
 
 (defn slope-effect
   "Single-slope effect summary: {:param :mean :lo :hi :odds :p-neg} where :p-neg =
@@ -126,9 +109,9 @@
         d3   (:draws f3)]
     (println "\n══ Model comparison (WAIC) ══")
     (let [cmp (models/compare-m3-m4 data md opts)]
-      (doseq [{nm :name :keys [elpd-waic waic d-elpd d-se se]} cmp]
-        (println (format "  %-3s elpd=%.2f waic=%.1f Δelpd=%.2f d_se=%.2f se=%.2f"
-                         nm elpd-waic waic d-elpd d-se se)))
+      (doseq [{nm :name :keys [elpd-waic waic d-elpd d-se se n-p-warn]} cmp]
+        (println (format "  %-3s elpd=%.2f waic=%.1f Δelpd=%.2f d_se=%.2f se=%.2f p_waic>0.4: %d"
+                         nm elpd-waic waic d-elpd d-se se (or n-p-warn 0))))
 
       (println (format "\n══ M3 (primary, no daylight) — N=%d ══" (:n f3)))
       (let [s3 (slope-rows f3)]
@@ -143,6 +126,8 @@
           (print-categories cat-key (category-rows f4 md family cat-key)))
 
         (println "\n══ Risk scenarios (M3) ══")
+        (println "  (categorical offsets marginalized at 0 — absolute P is meaningful")
+        (println "   only RELATIVE across scenarios; named-config risk is the calculator's job)")
         (doseq [{:keys [scenario mean median eti]} (models/risk-scenarios f3 md)]
           (println (format "  %s\n    P=%.1f%% median=%.1f%% 89%%ETI[%.1f%%, %.1f%%]"
                            scenario (* 100 mean) (* 100 median)

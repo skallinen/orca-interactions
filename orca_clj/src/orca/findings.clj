@@ -29,6 +29,7 @@
    [clojure.string :as str]
    [orca.config :as config]
    [orca.diagnostics :as diag]
+   [orca.params :as params]
    [orca.prepare :as prep]
    [orca.stan :as stan]
    [orca.stats :as stats]
@@ -39,14 +40,7 @@
 
 (defn- pct [n d] (if (pos? d) (* 100.0 (/ (double n) d)) 0.0))
 
-(defn- cat-index
-  "0-based position of `cat-name` within metadata `cat-key`, asserted present
-   (a -1 from .indexOf would silently corrupt the 2×2 / contrast — fail loudly)."
-  [md cat-key cat-name]
-  (let [i (.indexOf (vec (get-in md [:categories cat-key])) cat-name)]
-    (assert (nat-int? i)
-            (str "category " (pr-str cat-name) " not found in " cat-key))
-    i))
+(def ^:private cat-index params/cat-index)
 
 (defn- print-value-counts
   "Print value counts of `xs` (nil kept), sorted by count descending."
@@ -217,28 +211,15 @@
          cols (index-draws draws "alpha_antifoul" k)]
      (vec (for [i (range k) j (range k)
                 :when (< i j)
-                :let [d  (mapv - (nth cols i) (nth cols j))
-                      m  (util/mean d)]
-                :when (> (Math/abs (double m)) min-abs)
-                :let [[lo hi] (diag/eti d)]]
-            {:a (nth categories i) :b (nth categories j)
-             :mean m :lo lo :hi hi
-             :p-gt (/ (double (count (filter pos? d))) (count d))
-             :odds (Math/exp m)})))))
+                :let [c (params/contrast (nth cols i) (nth cols j))]
+                :when (> (Math/abs (double (:mean c))) min-abs)]
+            (assoc c :a (nth categories i) :b (nth categories j)))))))
 
 (defn antifoul-black-vs-coppercoat
   "Black − Coppercoat contrast from the single-predictor fit:
    {:mean :lo :hi :odds :p-gt}."
-  [{:keys [draws categories]} md]
-  (let [k    (count categories)
-        cols (index-draws draws "alpha_antifoul" k)
-        bi   (cat-index md :antifoul "Black")
-        ci   (cat-index md :antifoul "Coppercoat")
-        d    (mapv - (nth cols bi) (nth cols ci))
-        [lo hi] (diag/eti d)
-        m    (util/mean d)]
-    {:mean m :lo lo :hi hi :odds (Math/exp m)
-     :p-gt (/ (double (count (filter pos? d))) (count d))}))
+  [{:keys [draws]} md]
+  (params/category-contrast draws md "alpha_antifoul" :antifoul "Black" "Coppercoat"))
 
 (defn validate-antifoul
   "End-to-end black-antifoul validation. Prints raw
