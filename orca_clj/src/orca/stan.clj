@@ -10,8 +10,21 @@
    [clojure.java.io :as io]
    [clojure.java.shell :as sh]
    [clojure.string :as str]
+   [orca.config :as config]
    [orca.util :as util]
    [tablecloth.api :as tc]))
+
+(defn mcmc-opts
+  "Sampling options merged over the config :mcmc / :paths defaults: seed,
+   n-chains, num-warmup, num-samples, out-dir. `opts` overrides any default."
+  ([] (mcmc-opts {}))
+  ([opts]
+   (merge {:seed        (config/cfg :mcmc :seed)
+           :n-chains    (config/cfg :mcmc :n-chains)
+           :num-warmup  (config/cfg :mcmc :num-warmup)
+           :num-samples (config/cfg :mcmc :num-samples)
+           :out-dir     (config/cfg :paths :out-dir)}
+          opts)))
 
 (def cmdstan-dir
   (or (System/getenv "CMDSTAN")
@@ -56,11 +69,12 @@
     (str "sample " model " chain " chain-id))
   out-csv)
 
-(defn sample
+(defn sample-chains
   "Compile and sample `n-chains` chains of `stan-path` against `data-map`.
-   Returns a tablecloth dataset of pooled posterior draws (one row per draw,
-   columns = Stan output names). Chains share `seed` with id=1..n (CmdStan
-   derives an independent RNG stream per id)."
+   Returns a vector of per-chain draw datasets (one dataset per chain, one row
+   per draw, columns = Stan output names) — the per-chain layout split-R̂/ESS
+   (orca.diagnostics) need. Chains share `seed` with id=1..n (CmdStan derives an
+   independent RNG stream per id)."
   [stan-path data-map
    {:keys [n-chains seed num-warmup num-samples out-dir]
     :or   {n-chains 4 seed 42 num-warmup 1000 num-samples 2000 out-dir "out"}}]
@@ -68,11 +82,18 @@
         data-json (str out-dir "/data.json")]
     (io/make-parents data-json)
     (util/write-json data-json data-map)
-    (->> (for [c (range 1 (inc n-chains))]
-           (let [csv (str out-dir "/draws_" c ".csv")]
-             (run-sampling model {:data-json data-json :out-csv csv
-                                  :chain-id c :seed seed
-                                  :num-warmup num-warmup
-                                  :num-samples num-samples})
-             (read-draws-csv csv)))
-         (apply tc/concat))))
+    (mapv (fn [c]
+            (let [csv (str out-dir "/draws_" c ".csv")]
+              (run-sampling model {:data-json data-json :out-csv csv
+                                   :chain-id c :seed seed
+                                   :num-warmup num-warmup
+                                   :num-samples num-samples})
+              (read-draws-csv csv)))
+          (range 1 (inc n-chains)))))
+
+(defn sample
+  "Compile and sample `n-chains` chains of `stan-path` against `data-map`.
+   Returns a tablecloth dataset of pooled posterior draws (one row per draw,
+   columns = Stan output names). See `sample-chains` for the per-chain layout."
+  [stan-path data-map opts]
+  (apply tc/concat (sample-chains stan-path data-map opts)))

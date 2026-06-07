@@ -22,3 +22,8 @@
   "Look up a config value by key path, e.g. (cfg :mcmc :seed)."
   [& ks]
   (get-in @config ks))
+
+(defn results-path
+  "Path under the configured output dir's results/ folder."
+  [fname]
+  (str (cfg :paths :out-dir) "/results/" fname))

@@ -1,10 +1,16 @@
 {:paths ["src" "resources"]
  ;; Numeric work goes through tablecloth's dtype-next substrate
  ;; (tech.v3.datatype.*), pulled in transitively — no separate stats dep.
+ ;; Two plain Java libs are added for the full analysis port: Apache Commons
+ ;; Math (frequentist tests) and XChart (headless PNG charts).
  :deps {org.clojure/clojure                  {:mvn/version "1.12.0"}
         scicloj/tablecloth                   {:mvn/version "7.029.1"}
         com.cnuernber/charred                {:mvn/version "1.034"}
-        org.shredzone.commons/commons-suncalc {:mvn/version "3.11"}}
+        org.shredzone.commons/commons-suncalc {:mvn/version "3.11"}
+        ;; χ², Welch t-test, exact Fisher (hypergeometric) — orca.stats.
+        org.apache.commons/commons-math3     {:mvn/version "3.6.1"}
+        ;; Headless Java2D PNG charts (BitmapEncoder) — orca.plot.
+        org.knowm.xchart/xchart              {:mvn/version "3.8.8"}}
  :aliases
  {;; Socket REPL for REPL-driven development.
   :repl {:jvm-opts ["-Dclojure.server.repl={:port 5577 :accept clojure.core.server/repl}"]}
