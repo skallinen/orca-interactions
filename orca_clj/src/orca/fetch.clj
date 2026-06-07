@@ -1,9 +1,9 @@
 (ns orca.fetch
   "Fetch orca-interaction reports from the Cruising Association survey API.
 
-   A port of the original Python downloader: pull the report list, then fetch
-   every detailed incident / uneventful-passage report concurrently, flatten
-   each response, and write the raw JSON plus tabular CSVs (via tablecloth).
+   Pulls the report list, then fetches every detailed incident /
+   uneventful-passage report concurrently, flattens each response, and writes
+   the raw JSON plus tabular CSVs (via tablecloth).
 
    This is an API client, not a scraper — every record comes from a documented
    JSON endpoint (see :api in config.edn). The CA API is slow, so detail fetches
@@ -70,7 +70,7 @@
 
 (defn- ordered-columns
   "Column names for a CSV: those in `priority` that are present (in priority
-   order), then any remaining columns alphabetically — mirrors save_csv."
+   order), then any remaining columns alphabetically."
   [ds priority]
   (let [present (set (tc/column-names ds))]
     (into (filterv present priority)

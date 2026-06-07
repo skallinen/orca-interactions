@@ -1,7 +1,10 @@
 /out/
 /.cpcache/
 /.clj-kondo/.cache/
-/stan/m3
-/stan/rate
+
+# Compiled Stan artifacts: keep the .stan sources, ignore everything CmdStan
+# generates from them (executables with no extension, plus .hpp/.o).
+/stan/*
+!/stan/*.stan
 *.hpp
 *.o
