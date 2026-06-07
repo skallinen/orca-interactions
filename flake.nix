@@ -1,5 +1,5 @@
 {
-  description = "Builderhead development environment";
+  description = "Orca interactions analysis development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -47,7 +47,7 @@
 	  LC_CTYPE = "en_US.UTF-8";
 
 	  shellHook = ''
-	    echo "=== Builderhead Development Environment ==="
+	    echo "=== Orca Interactions Development Environment ==="
 	    echo "JDK: ${pkgs.jdk21.version}"
 	    echo "Clojure LSP: $(${pkgs.clojure-lsp}/bin/clojure-lsp --version)"
 	    echo "Platform: ${if isDarwin then "macOS" else "Linux"}"
@@ -65,7 +65,7 @@
 
       in {
         devShells.default = pkgs.mkShell (commonShellConfig // {
-          name = "builderhead-dev";
+          name = "orca-dev";
           nativeBuildInputs =
             basicTools
             # ++ containerTools
