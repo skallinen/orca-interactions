@@ -272,7 +272,12 @@
 
 (defn- scenario-p
   "Posterior P(interaction) draws for a scenario = seq of [coeff-name value],
-   plus the intercept. Category offsets are omitted (held at 0)."
+   plus the intercept. The categorical offsets (alpha_sailing/antifoul/hull/
+   rudder) are MARGINALIZED at their prior-centered mean of 0, i.e. an
+   average-category vessel — NOT a named configuration. The absolute P is
+   therefore only meaningful *relative* across scenarios (the blog frames these
+   as ordinal comparisons; named-category absolute risk is the calculator's job,
+   index.html)."
   [draws params]
   (let [s     (tc/row-count draws)
         alpha (double-array (draws "alpha"))
@@ -286,7 +291,10 @@
 (defn risk-scenarios
   "Predicted P(interaction) for the low/medium/higher-risk scenarios
    (methodology §4), with no daylight term (time of day is handled separately,
-   §7). Returns a row per scenario with :mean, :median, :eti."
+   §7). Categorical offsets are marginalized at 0 (see `scenario-p`), so the
+   absolute P is meaningful only *relative* across scenarios — the ordinal
+   comparison the blog calls the robust output. Returns a row per scenario with
+   :mean, :median, :eti."
   [{:keys [draws]} md]
   (let [sv (partial standardize-val md)
         scenarios
