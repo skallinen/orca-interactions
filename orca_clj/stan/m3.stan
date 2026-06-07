@@ -1,6 +1,7 @@
 // M3 (no daylight) — Bayesian logistic regression for orca interactions.
-// Mirrors bayesian_orca/refit_no_daylight.py: same priors, same linear
-// predictor. Category indices are 1-based (Stan convention).
+// The calculator's final refit: relaxed intercept prior alpha~N(-1,1) with
+// beta_depth, beta_autopilot ~ N(0,1) and the remaining slopes/offsets N(0,0.5).
+// Category indices are 1-based (Stan convention).
 data {
   int<lower=0> N;
   array[N] int<lower=0, upper=1> y;

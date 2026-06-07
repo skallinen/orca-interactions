@@ -1,7 +1,7 @@
 // M1 — vessel characteristics (ladder rung 1).
-// Mirrors bayesian_orca/models.py:build_model_1: boat length (ordinal slope) plus
-// rudder / antifoul / hull index effects. Fermi intercept prior, weakly
-// regularizing slope/index priors N(0, 0.5). Emits log_lik for WAIC.
+// M0 plus boat length (ordinal slope) and rudder / antifoul / hull index
+// effects. Fermi intercept prior, weakly regularizing slope/index priors
+// N(0, 0.5). Emits log_lik for WAIC.
 data {
   int<lower=0> N;
   array[N] int<lower=0, upper=1> y;

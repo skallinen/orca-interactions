@@ -1,9 +1,8 @@
 // M4 (ladder rung 4) — extended model = M3 (no daylight) + moon + tide + cloud
 // cover (33 params). Matches the methodology ladder (§4): "M4 + moon, tide,
 // cloud cover ... showed no credible effects and slightly worse predictive
-// performance". This is the methodology spec, NOT the superseded
-// bayesian_orca/models.py:build_model_4 (which added towing + month sin/cos);
-// see porting.md §6.2. Fermi intercept prior, all slopes/offsets N(0, 0.5).
+// performance" (see porting.md §6.2 for why this is the M4 contents). Fermi
+// intercept prior, all slopes/offsets N(0, 0.5).
 // Emits log_lik so orca.waic can compare it against M3.
 data {
   int<lower=0> N;

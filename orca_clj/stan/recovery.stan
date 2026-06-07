@@ -1,6 +1,6 @@
 // Parameter-recovery model (orca.models/parameter-recovery): a 3-parameter
 // logistic regression used to confirm the sampler recovers known a/b from
-// simulated data (methodology §4; bayesian_orca/models.py:parameter_recovery_test).
+// simulated data (methodology §4).
 data {
   int<lower=0> N;
   array[N] int<lower=0, upper=1> y;

@@ -1,9 +1,8 @@
 // Single-predictor daylight model (orca.findings/validate-daylight).
 // logit P(interaction) = alpha + beta_day * is_daytime. A minimal, no-controls
 // model used only to validate the raw night/day signal in isolation and to read
-// off the implied P(interaction | night) and P(interaction | day). Priors match
-// the Python validation script: alpha ~ N(0, 1), beta_day ~ N(0, 1). Emits
-// log_lik for WAIC (orca.waic).
+// off the implied P(interaction | night) and P(interaction | day). Priors:
+// alpha ~ N(0, 1), beta_day ~ N(0, 1). Emits log_lik for WAIC (orca.waic).
 //
 // Note: the primary regression M3 (orca.model) excludes time of day; the night
 // effect is reported separately by the exposure-based Poisson rate ratio

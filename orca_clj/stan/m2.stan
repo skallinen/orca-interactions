@@ -1,7 +1,7 @@
 // M2 — vessel + activity (ladder rung 2).
-// Mirrors bayesian_orca/models.py:build_model_2: M1 plus sailing mode (index),
-// speed (ordinal slope), and autopilot (binary slope). Fermi intercept prior,
-// slope/index priors N(0, 0.5). Emits log_lik for WAIC.
+// M1 plus sailing mode (index), speed (ordinal slope), and autopilot (binary
+// slope). Fermi intercept prior, slope/index priors N(0, 0.5). Emits log_lik
+// for WAIC.
 data {
   int<lower=0> N;
   array[N] int<lower=0, upper=1> y;

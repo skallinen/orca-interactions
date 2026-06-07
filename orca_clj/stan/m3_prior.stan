@@ -1,16 +1,12 @@
 // M3 (no daylight) with the intercept prior passed as DATA — drives the prior
-// sensitivity analysis (orca.sensitivity; port of
-// bayesian_orca/sensitivity_analysis.py).
+// sensitivity analysis (orca.sensitivity).
 //
-// BLOG-FAITHFUL CORRECTION: the Python sensitivity_analysis.py keeps a daylight
-// predictor (beta_daylight * is_daytime) in the M3 it varies. The blog
-// (methodology §4, §7) removed time of day from the regression — M3 is the
-// 30-param NO-daylight model and time of day is handled separately by the
-// exposure-based Poisson rate ratio (orca.timeofday). So this model is the
-// no-daylight M3 (identical predictors to m3_build.stan); only the intercept
-// prior mean/sd vary, supplied as alpha_mu / alpha_sd. All slopes/offsets keep
-// N(0, 0.5). No generated quantities — the sensitivity study needs only the
-// posterior of alpha and the slopes/offsets, not WAIC.
+// Time of day is not in the regression (methodology §4, §7): it is handled
+// separately by the exposure-based Poisson rate ratio (orca.timeofday). So this
+// is the no-daylight M3 (identical predictors to m3_build.stan); only the
+// intercept prior mean/sd vary, supplied as alpha_mu / alpha_sd. All
+// slopes/offsets keep N(0, 0.5). No generated quantities — the sensitivity
+// study needs only the posterior of alpha and the slopes/offsets, not WAIC.
 data {
   int<lower=0> N;
   array[N] int<lower=0, upper=1> y;

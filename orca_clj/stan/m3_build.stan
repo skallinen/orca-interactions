@@ -5,7 +5,7 @@
 // historical variant lives in m3_daylight.stan for the encoding studies.
 //
 // This is the ladder/model-building M3: Fermi intercept prior N(-3.5, 0.6) and
-// all slopes/offsets N(0, 0.5) (matching bayesian_orca/models.py:build_model_3).
+// all slopes/offsets N(0, 0.5).
 // It differs from the calculator's final refit (stan/m3.stan / orca.model),
 // which relaxes to alpha~N(-1,1) with beta_depth,beta_autopilot~N(0,1). Emits
 // log_lik so orca.waic can compare it against M4.
