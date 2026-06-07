@@ -77,7 +77,7 @@ Endpoints, headers, worker count, retries and CSV column orderings live under
 | `orca.sensitivity`| Prior sensitivity sweep over four intercept priors |
 | `orca.findings`   | Validations of the two headline findings (black antifoul, night/day) |
 | `orca.encoding`   | Time-of-day encoding studies (the justification for excluding time of day) |
-| `orca.timeofday`  | Exposure-based night/day Poisson rate ratio (0.56 [0.43, 0.72]) |
+| `orca.timeofday`  | Exposure-based night/day Poisson rate ratio (0.56 [0.43, 0.72]) + 4-rate time-of-day interaction tests |
 | `orca.eda`        | Stratified distribution comparison + figures |
 | `orca.dag`        | Causal DAG, adjustment sets, and caveats |
 | `orca.diagnostics`| Rank-normalized split-R̂, bulk/tail ESS, ETI/HDI |
@@ -93,6 +93,14 @@ Endpoints, headers, worker count, retries and CSV column orderings live under
   because the reports record incident times as a single period while uneventful
   passages record every period covered — no binary day/night encoding is well
   posed (`orca.encoding` shows the sensitivity).
+- **Time-of-day × risk-factor interactions** are tested in `orca.timeofday`
+  (`interaction-report`) with a 4-rate stratified Poisson model
+  (`stan/rate4.stan`): incident rate per yacht-hour in four cells, factor
+  present/absent crossed with day/night. Black antifoul 2.1× day / 2.3× night
+  (interaction 1.1×, 89% CI 0.65 to 1.83) and Motoring 4.1× / 5.5× (interaction
+  1.4×, 89% CI 0.75 to 2.22). Both interaction CIs span 1.0, so the effects are
+  stable across time of day, which licenses applying the single 0.56 night/day
+  ratio as a uniform multiplier.
 - **M4** = M3 + moon + tide + cloud cover (33 params).
 - **Model comparison is WAIC** (`orca.waic`), validated on the M3-vs-M4
   ordering. M3 is preferred; M4 adds no credible effects.
@@ -103,14 +111,6 @@ Endpoints, headers, worker count, retries and CSV column orderings live under
 A blog reader should not assume every number in the two posts is recomputed here.
 These are deliberate, documented boundaries:
 
-- **Time-of-day × risk-factor interaction model is NOT ported.** Both posts
-  describe a 4-rate stratified Poisson model (e.g. Black antifoul 2.1× day /
-  2.4× night, Motoring 4.1× / 5.5×, interaction ratios ≈ 1). `orca.timeofday`
-  reproduces only the single overall night/day rate ratio, **0.56 [0.43, 0.72]**.
-  The interaction analysis was a robustness check whose null result *licenses*
-  applying that single ratio as a uniform multiplier; its confidence intervals
-  are **not** regenerated. Port it into `orca.timeofday` if that section ever
-  needs reproducing.
 - **Historical night coefficient (+2.06, OR ≈ 7.8×) is not reproduced
   numerically — by design.** That is the *original* with-daylight finding that
   was then removed. `orca.encoding` / `stan/m3_daylight.stan` reproduces the
