@@ -1,6 +1,14 @@
-// M3 (no daylight) — Bayesian logistic regression for orca interactions.
-// Mirrors bayesian_orca/refit_no_daylight.py: same priors, same linear
-// predictor. Category indices are 1-based (Stan convention).
+// M3 (model-building, ladder rung 3) — vessel + activity + environment.
+// The PRIMARY model's predictor set: M2 plus depth, distance, wind, sea state
+// (30 params). NO daylight — time of day was originally trialled here but
+// removed after the encoding analysis (methodology §4, §7); the with-daylight
+// historical variant lives in m3_daylight.stan for the encoding studies.
+//
+// This is the ladder/model-building M3: Fermi intercept prior N(-3.5, 0.6) and
+// all slopes/offsets N(0, 0.5) (matching bayesian_orca/models.py:build_model_3).
+// It differs from the calculator's final refit (stan/m3.stan / orca.model),
+// which relaxes to alpha~N(-1,1) with beta_depth,beta_autopilot~N(0,1). Emits
+// log_lik so orca.waic can compare it against M4.
 data {
   int<lower=0> N;
   array[N] int<lower=0, upper=1> y;
@@ -39,9 +47,9 @@ parameters {
 model {
   vector[N] logit_p;
 
-  alpha ~ normal(-1, 1);
-  beta_depth ~ normal(0, 1);
-  beta_autopilot ~ normal(0, 1);
+  alpha ~ normal(-3.5, 0.6);
+  beta_depth ~ normal(0, 0.5);
+  beta_autopilot ~ normal(0, 0.5);
   beta_speed ~ normal(0, 0.5);
   beta_length ~ normal(0, 0.5);
   beta_distance ~ normal(0, 0.5);

@@ -1,6 +1,10 @@
-// M3 (no daylight) — Bayesian logistic regression for orca interactions.
-// Mirrors bayesian_orca/refit_no_daylight.py: same priors, same linear
-// predictor. Category indices are 1-based (Stan convention).
+// M4 (ladder rung 4) — extended model = M3 (no daylight) + moon + tide + cloud
+// cover (33 params). Matches the methodology ladder (§4): "M4 + moon, tide,
+// cloud cover ... showed no credible effects and slightly worse predictive
+// performance". This is the methodology spec, NOT the superseded
+// bayesian_orca/models.py:build_model_4 (which added towing + month sin/cos);
+// see porting.md §6.2. Fermi intercept prior, all slopes/offsets N(0, 0.5).
+// Emits log_lik so orca.waic can compare it against M3.
 data {
   int<lower=0> N;
   array[N] int<lower=0, upper=1> y;
@@ -12,6 +16,9 @@ data {
   vector[N] distance;
   vector[N] wind;
   vector[N] sea;
+  vector[N] moon;
+  vector[N] tide;
+  vector[N] cloud;
 
   int<lower=1> n_sailing;
   array[N] int<lower=1> sailing;
@@ -31,6 +38,9 @@ parameters {
   real beta_distance;
   real beta_wind;
   real beta_sea;
+  real beta_moon;
+  real beta_tide;
+  real beta_cloud;
   vector[n_sailing] alpha_sailing;
   vector[n_antifoul] alpha_antifoul;
   vector[n_hull] alpha_hull;
@@ -39,14 +49,17 @@ parameters {
 model {
   vector[N] logit_p;
 
-  alpha ~ normal(-1, 1);
-  beta_depth ~ normal(0, 1);
-  beta_autopilot ~ normal(0, 1);
+  alpha ~ normal(-3.5, 0.6);
+  beta_depth ~ normal(0, 0.5);
+  beta_autopilot ~ normal(0, 0.5);
   beta_speed ~ normal(0, 0.5);
   beta_length ~ normal(0, 0.5);
   beta_distance ~ normal(0, 0.5);
   beta_wind ~ normal(0, 0.5);
   beta_sea ~ normal(0, 0.5);
+  beta_moon ~ normal(0, 0.5);
+  beta_tide ~ normal(0, 0.5);
+  beta_cloud ~ normal(0, 0.5);
   alpha_sailing ~ normal(0, 0.5);
   alpha_antifoul ~ normal(0, 0.5);
   alpha_hull ~ normal(0, 0.5);
@@ -56,7 +69,8 @@ model {
     logit_p[i] = alpha + beta_depth * depth[i] + beta_autopilot * autopilot[i]
                  + beta_speed * speed[i] + beta_length * boatlen[i]
                  + beta_distance * distance[i] + beta_wind * wind[i]
-                 + beta_sea * sea[i] + alpha_sailing[sailing[i]]
+                 + beta_sea * sea[i] + beta_moon * moon[i] + beta_tide * tide[i]
+                 + beta_cloud * cloud[i] + alpha_sailing[sailing[i]]
                  + alpha_antifoul[antifoul[i]] + alpha_hull[hull[i]]
                  + alpha_rudder[rudder[i]];
   }
@@ -68,7 +82,8 @@ generated quantities {
     real lp = alpha + beta_depth * depth[i] + beta_autopilot * autopilot[i]
               + beta_speed * speed[i] + beta_length * boatlen[i]
               + beta_distance * distance[i] + beta_wind * wind[i]
-              + beta_sea * sea[i] + alpha_sailing[sailing[i]]
+              + beta_sea * sea[i] + beta_moon * moon[i] + beta_tide * tide[i]
+              + beta_cloud * cloud[i] + alpha_sailing[sailing[i]]
               + alpha_antifoul[antifoul[i]] + alpha_hull[hull[i]]
               + alpha_rudder[rudder[i]];
     log_lik[i] = bernoulli_logit_lpmf(y[i] | lp);

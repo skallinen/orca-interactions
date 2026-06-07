@@ -1,9 +1,22 @@
-// M3 (no daylight) — Bayesian logistic regression for orca interactions.
-// Mirrors bayesian_orca/refit_no_daylight.py: same priors, same linear
-// predictor. Category indices are 1-based (Stan convention).
+// M3 (no daylight) with the intercept prior passed as DATA — drives the prior
+// sensitivity analysis (orca.sensitivity; port of
+// bayesian_orca/sensitivity_analysis.py).
+//
+// BLOG-FAITHFUL CORRECTION: the Python sensitivity_analysis.py keeps a daylight
+// predictor (beta_daylight * is_daytime) in the M3 it varies. The blog
+// (methodology §4, §7) removed time of day from the regression — M3 is the
+// 30-param NO-daylight model and time of day is handled separately by the
+// exposure-based Poisson rate ratio (orca.timeofday). So this model is the
+// no-daylight M3 (identical predictors to m3_build.stan); only the intercept
+// prior mean/sd vary, supplied as alpha_mu / alpha_sd. All slopes/offsets keep
+// N(0, 0.5). No generated quantities — the sensitivity study needs only the
+// posterior of alpha and the slopes/offsets, not WAIC.
 data {
   int<lower=0> N;
   array[N] int<lower=0, upper=1> y;
+
+  real alpha_mu;
+  real<lower=0> alpha_sd;
 
   vector[N] depth;
   vector[N] autopilot;
@@ -39,9 +52,9 @@ parameters {
 model {
   vector[N] logit_p;
 
-  alpha ~ normal(-1, 1);
-  beta_depth ~ normal(0, 1);
-  beta_autopilot ~ normal(0, 1);
+  alpha ~ normal(alpha_mu, alpha_sd);
+  beta_depth ~ normal(0, 0.5);
+  beta_autopilot ~ normal(0, 0.5);
   beta_speed ~ normal(0, 0.5);
   beta_length ~ normal(0, 0.5);
   beta_distance ~ normal(0, 0.5);
@@ -61,16 +74,4 @@ model {
                  + alpha_rudder[rudder[i]];
   }
   y ~ bernoulli_logit(logit_p);
-}
-generated quantities {
-  vector[N] log_lik;
-  for (i in 1 : N) {
-    real lp = alpha + beta_depth * depth[i] + beta_autopilot * autopilot[i]
-              + beta_speed * speed[i] + beta_length * boatlen[i]
-              + beta_distance * distance[i] + beta_wind * wind[i]
-              + beta_sea * sea[i] + alpha_sailing[sailing[i]]
-              + alpha_antifoul[antifoul[i]] + alpha_hull[hull[i]]
-              + alpha_rudder[rudder[i]];
-    log_lik[i] = bernoulli_logit_lpmf(y[i] | lp);
-  }
 }
