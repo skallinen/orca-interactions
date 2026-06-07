@@ -713,50 +713,60 @@
 ;; ═══════════════════════════════════════════════════════════
 
 (def posterior-data (r/atom nil))
-(def sample-rate 0.330275)
 
-;; Load the posterior draws JSON on startup
+;; Load the posterior draws JSON on startup. Everything the calculator needs —
+;; the draws, the parameter layout, category lists, standardization params and
+;; the sample rate — lives in this one file (produced by orca.model), so none of
+;; it is hardcoded below; it is all derived from what we fetch.
 (-> (js/fetch "posterior_draws.json")
     (.then #(.json %))
     (.then #(reset! posterior-data (js->clj % :keywordize-keys true))))
 
-;; Standardization parameters
-(def std-params
-  {:depth    {:mean 1.708 :sd 0.951}
-   :distance {:mean 1.355 :sd 1.147}
-   :speed    {:mean 1.939 :sd 0.450}
-   :length   {:mean 1.683 :sd 0.815}
-   :wind     {:mean 0.994 :sd 0.804}
-   :sea      {:mean 0.511 :sd 0.601}})
+;; --- Model config derived from the fetched JSON ---------------------------
 
-(defn standardize [raw-val param-key]
-  (let [{:keys [mean sd]} (get std-params param-key)]
+;; Calculator key -> standardization key in the JSON.
+(def std-key->json
+  {:depth :depth_ord :distance :distance_ord :speed :speed_ord
+   :length :boat_length_ord :wind :wind_ord :sea :sea_state_ord})
+
+;; Vector-param layout prefix -> category list key in the JSON.
+(def prefix->category
+  {"s" :sailing_mode "a" :antifoul "h" :hull_colour "r" :rudder})
+
+(defn index-maps
+  "From the JSON :layout and :categories, build {prefix {category-name draw-idx}}
+   for the categorical blocks (s_/a_/h_/r_): a level name -> its slot in a draw."
+  [layout categories]
+  (reduce
+    (fn [acc [i nm]]
+      (if-let [[_ pfx off] (re-matches #"([a-z]+)_(\d+)" nm)]
+        (if-let [cat-key (prefix->category pfx)]
+          (assoc-in acc [pfx (get-in categories [cat-key (js/parseInt off)])] i)
+          acc)
+        acc))
+    {}
+    (map-indexed vector layout)))
+
+(defn derive-config
+  "Pull std-params, sample-rate and category index maps out of one draws map."
+  [data]
+  (let [std (:standardization data)
+        im  (index-maps (:layout data) (:categories data))]
+    {:sample-rate (:sample_rate data)
+     :std-params  (into {} (map (fn [[k jk]] [k (get std jk)]) std-key->json))
+     :sailing (im "s") :antifoul (im "a") :hull (im "h") :rudder (im "r")}))
+
+(defn standardize [cfg raw-val param-key]
+  (let [{:keys [mean sd]} (get-in cfg [:std-params param-key])]
     (/ (- raw-val mean) sd)))
 
 (defn sigmoid [x]
   (/ 1.0 (+ 1.0 (js/Math.exp (- x)))))
 
-;; King & Zeng (2001) intercept correction
-(defn king-zeng-offset [base-rate]
+;; King & Zeng (2001) intercept correction (uses the fetched sample rate)
+(defn king-zeng-offset [cfg base-rate]
   (- (js/Math.log (/ base-rate (- 1.0 base-rate)))
-     (js/Math.log (/ sample-rate (- 1.0 sample-rate)))))
-
-;; Category name -> index in the draw vector
-;; Layout: [alpha(0), b_depth(1), b_autopilot(2), b_speed(3),
-;;          b_length(4), b_distance(5), b_wind(6), b_sea(7),
-;;          s_0..s_4(8-12), a_0..a_7(13-20), h_0..h_2(21-23), r_0..r_5(24-29)]
-
-(def sailing-idx
-  {"Hove-to" 8 "Motoring" 9 "Motorsailing" 10 "Sailing" 11})
-
-(def antifoul-idx
-  {"Black" 13 "Blue" 14 "Coppercoat" 15 "Red" 18 "White" 20})
-
-(def hull-idx
-  {"Dark" 21 "White/light" 23})
-
-(def rudder-idx
-  {"Full skeg" 24 "Semi skeg" 26 "Spade" 27 "Twin rudder" 28})
+     (js/Math.log (/ (:sample-rate cfg) (- 1.0 (:sample-rate cfg))))))
 
 ;; Day/night adjustment from Bayesian Poisson rate model (separate analysis).
 ;; Rate ratio (night/day) = 0.56. Exposure fraction: 65% day, 35% night.
@@ -766,30 +776,39 @@
 (def daylight-adj {"Day" 1.182 "Night" 0.662 "Average" 1.0})
 
 ;; Compute prediction from a single posterior draw
-(defn predict-from-draw [draw params base-rate]
+(defn predict-from-draw [cfg draw params base-rate]
   (let [logit (+ (nth draw 0)  ;; alpha
-                 (* (nth draw 1) (standardize (:depth params) :depth))
+                 (* (nth draw 1) (standardize cfg (:depth params) :depth))
                  (* (nth draw 2) (:autopilot params))
-                 (* (nth draw 3) (standardize (:speed params) :speed))
-                 (* (nth draw 4) (standardize (:length params) :length))
-                 (* (nth draw 5) (standardize (:distance params) :distance))
-                 (* (nth draw 6) (standardize (:wind params) :wind))
-                 (* (nth draw 7) (standardize (:sea params) :sea))
-                 (nth draw (get sailing-idx (:sailing params) 10))
-                 (nth draw (get antifoul-idx (:antifoul params) 14))
-                 (nth draw (get hull-idx (:hull params) 23))
-                 (nth draw (get rudder-idx (:rudder params) 27))
-                 (king-zeng-offset base-rate))
+                 (* (nth draw 3) (standardize cfg (:speed params) :speed))
+                 (* (nth draw 4) (standardize cfg (:length params) :length))
+                 (* (nth draw 5) (standardize cfg (:distance params) :distance))
+                 (* (nth draw 6) (standardize cfg (:wind params) :wind))
+                 (* (nth draw 7) (standardize cfg (:sea params) :sea))
+                 (nth draw (get-in cfg [:sailing (:sailing params)] 10))
+                 (nth draw (get-in cfg [:antifoul (:antifoul params)] 14))
+                 (nth draw (get-in cfg [:hull (:hull params)] 23))
+                 (nth draw (get-in cfg [:rudder (:rudder params)] 27))
+                 (king-zeng-offset cfg base-rate))
         p-avg (sigmoid logit)
         adj (get daylight-adj (:daylight params) 1.0)]
     ;; Apply day/night rate ratio as multiplicative adjustment
     (min 1.0 (* p-avg adj))))
 
-;; Run all 500 posterior draws and return sorted predictions
+;; Reference scenario raw values = the standardization means (-> standardized 0)
+(defn ref-raw-values []
+  (if-let [data @posterior-data]
+    (let [std (:standardization data)
+          g (fn [jk] (get-in std [jk :mean]))]
+      {:depth (g :depth_ord) :distance (g :distance_ord) :speed (g :speed_ord)
+       :length (g :boat_length_ord) :wind (g :wind_ord) :sea (g :sea_state_ord)})
+    {:depth 1.708 :distance 1.355 :speed 1.939 :length 1.683 :wind 0.994 :sea 0.511}))
+
+;; Run all posterior draws and return sorted predictions
 (defn mc-predictions [params base-rate]
   (if-let [data @posterior-data]
-    (let [draws (:draws data)
-          preds (mapv #(predict-from-draw % params base-rate) draws)]
+    (let [cfg (derive-config data)
+          preds (mapv #(predict-from-draw cfg % params base-rate) (:draws data))]
       (sort preds))
     ;; Fallback if JSON not loaded yet
     [0.02]))
@@ -802,8 +821,8 @@
 ;; Point estimate using the mean of all draws (for reference scenario)
 (defn predict-p-mean [params base-rate]
   (if-let [data @posterior-data]
-    (let [draws (:draws data)
-          preds (mapv #(predict-from-draw % params base-rate) draws)]
+    (let [cfg (derive-config data)
+          preds (mapv #(predict-from-draw cfg % params base-rate) (:draws data))]
       (/ (reduce + preds) (count preds)))
     base-rate))
 
@@ -850,11 +869,10 @@
         p-lo (percentile sorted-preds 0.055)
         p-hi (percentile sorted-preds 0.945)
         ;; Reference scenario: average values (all standardized to 0)
-        ref-params {:depth 1.708 :distance 1.355 :speed 1.939
-                    :length 1.683 :wind 0.994 :sea 0.511
-                    :autopilot 1 :daylight "Day"
-                    :sailing "Motorsailing" :antifoul "Blue"
-                    :hull "White/light" :rudder "Spade"}
+        ref-params (merge (ref-raw-values)
+                          {:autopilot 1 :daylight "Day"
+                           :sailing "Motorsailing" :antifoul "Blue"
+                           :hull "White/light" :rudder "Spade"})
         p-ref (predict-p-mean ref-params base-rate)
         risk-mult (if (> p-ref 0.001) (/ p-median p-ref) 1)
         fmt (fn [p] (if (< p 0.01)
