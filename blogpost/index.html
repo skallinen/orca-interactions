@@ -839,7 +839,7 @@
                     :hull "White/light" :rudder "Spade"
                     :base-rate 2.5}))
 
-(defn select-field [label param-key options]
+(defn select-field [label param-key options & [note]]
   [:div.calc-field
    [:label label]
    [:select {:value (get @state param-key)
@@ -849,7 +849,12 @@
                                (js/parseInt v)
                                v)))}
     (for [[v label] options]
-      ^{:key v} [:option {:value v} label])]])
+      ^{:key v} [:option {:value v} label])]
+   (when note
+     [:div {:style {:font-family "Inter, sans-serif"
+                    :font-size "0.72em" :color "#888"
+                    :font-style "italic" :margin-top "3px"}}
+      note])])
 
 (defn bar-color [p]
   (cond
@@ -919,7 +924,10 @@
       [select-field "Time of day" :daylight
        [["Day" "Daylight"] ["Night" "Night"] ["Average" "Average (unknown)"]]]
       [select-field "Autopilot" :autopilot
-       [[1 "On"] [0 "Off"]]]
+       [[1 "On"] [0 "Off"]]
+       (str "Caution: \"off\" may be logged because the skipper switched it off "
+            "when the orcas appeared, so this effect could be a consequence of an "
+            "encounter rather than a cause of it. See the Caveats.")]
       [select-field "Boat length" :length
        [[0 "< 10m"] [1 "10 - 12.5m"] [2 "12.5 - 15m"] [3 "15m+"]]]
       [select-field "Sea state" :sea
