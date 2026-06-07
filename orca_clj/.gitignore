@@ -1,5 +1,6 @@
 /out/
 /.cpcache/
+/.clj-kondo/.cache/
 /stan/m3
 /stan/rate
 *.hpp
