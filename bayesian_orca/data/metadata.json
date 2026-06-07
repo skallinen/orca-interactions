@@ -1,0 +1,119 @@
+{
+  "categories": {
+    "boat_type": [
+      "Fishing Vessel",
+      "Motor",
+      "Sail",
+      "Unknown"
+    ],
+    "rudder": [
+      "Full skeg",
+      "Keel hung",
+      "Semi skeg",
+      "Spade",
+      "Twin rudder",
+      "Unknown"
+    ],
+    "antifoul": [
+      "Black",
+      "Blue",
+      "Coppercoat",
+      "Green",
+      "Other",
+      "Red",
+      "Unknown",
+      "White"
+    ],
+    "sailing_mode": [
+      "Hove-to",
+      "Motoring",
+      "Motorsailing",
+      "Sailing",
+      "Unknown"
+    ],
+    "hull_colour": [
+      "Dark colour",
+      "Unknown",
+      "White/light"
+    ]
+  },
+  "ordinal_maps": {
+    "boat_length": {
+      "Under 10m": 0,
+      "10 - 12.5m": 1,
+      "12.5 - 15m": 2,
+      "Over 15m": 3
+    },
+    "depth": {
+      "Up to 20m": 0,
+      "20 - 40m": 1,
+      "40 - 200m": 2,
+      "200m+": 3
+    },
+    "distance_off_land": {
+      "0 - 2": 0,
+      "2 - 5": 1,
+      "5 - 10": 2,
+      "Over 10": 3
+    },
+    "speed": {
+      "0 - 2": 0,
+      "3 - 4": 1,
+      "5 - 7": 2,
+      "8 - 11": 3
+    },
+    "wind_speed": {
+      "0 - 2 (0 - 6 knots)": 0,
+      "3 - 4 (7 - 16 knots)": 1,
+      "5 - 6 (17 - 27 knots)": 2,
+      "7+ (28 knots+)": 3
+    },
+    "sea_state": {
+      "Calm": 0,
+      "Moderate": 1,
+      "Rough": 2
+    },
+    "cloud_cover": {
+      "0 - 25%": 0,
+      "25 - 50%": 1,
+      "50 - 75%": 2,
+      "75 - 100%": 3
+    }
+  },
+  "standardization": {
+    "boat_length_ord": {
+      "mean": 1.68348623853211,
+      "sd": 0.8147582542246364
+    },
+    "depth_ord": {
+      "mean": 1.707667731629393,
+      "sd": 0.951212443054172
+    },
+    "distance_ord": {
+      "mean": 1.3546875,
+      "sd": 1.1468715953329447
+    },
+    "speed_ord": {
+      "mean": 1.9384615384615385,
+      "sd": 0.4501984865089491
+    },
+    "wind_ord": {
+      "mean": 0.9938176197836167,
+      "sd": 0.8043758714291223
+    },
+    "sea_state_ord": {
+      "mean": 0.5108024691358025,
+      "sd": 0.6012922492086068
+    },
+    "cloud_cover_ord": {
+      "mean": 0.7781402936378466,
+      "sd": 1.0240786389320438
+    },
+    "moon_illumination": {
+      "mean": 49.56574923547401,
+      "sd": 34.64624711534353
+    }
+  },
+  "n_incidents": 216,
+  "n_uneventful": 438
+}
