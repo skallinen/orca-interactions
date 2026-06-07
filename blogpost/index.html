@@ -683,9 +683,9 @@
 
 (def posterior-data (r/atom nil))
 
-;; Load the posterior draws JSON on startup. Everything the calculator needs —
-;; the draws, the parameter layout, category lists, standardization params and
-;; the sample rate — lives in this one file (produced by orca.model), so none of
+;; Load the posterior draws JSON on startup. Everything the calculator needs
+;; (the draws, the parameter layout, category lists, standardization params and
+;; the sample rate) lives in this one file (produced by orca.model), so none of
 ;; it is hardcoded below; it is all derived from what we fetch.
 (-> (js/fetch "posterior_draws.json")
     (.then #(.json %))

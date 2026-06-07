@@ -234,11 +234,13 @@
 <p>We collected all reports via the Cruising Association's public JSON API. The API exposes a report list endpoint and individual report detail endpoints. An API client iterates through the report list, fetches each report's details concurrently, and stores them as structured JSON.</p>
 
 <pre>
-# API endpoints (public, no authentication required)
-REPORT_LIST = "https://orcas.cruising.org.uk/api/v1/reports"
-REPORT_DETAIL = "https://orcas.cruising.org.uk/api/v1/reports/{id}"
+# API endpoints (public; requests send a caapi-clienttype header)
+BASE        = "https://apinl.theca.org.uk/orcasurvey/v1"
+REPORT_LIST = BASE + "/reportlist?withdetails=true"
+INCIDENT    = BASE + "/incidentresponse/{id}"
+UNEVENTFUL  = BASE + "/uneventfulresponse/{id}"
 
-# Rate limiting: 0.5s delay between requests
+# Detail requests run concurrently (the API is slow).
 # Output: all_reports_detailed.json (654 reports)
 </pre>
 
