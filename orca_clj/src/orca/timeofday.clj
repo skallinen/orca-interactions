@@ -1,6 +1,6 @@
 (ns orca.timeofday
-  "Exposure-based time-of-day analysis (methodology.html §7), replacing Python's
-   `astral` with the `commons-suncalc` Java library.
+  "Exposure-based time-of-day analysis (methodology.html §7), using the
+   `commons-suncalc` Java library for solar times.
 
    Classifies each incident's moment as Day/Night/Dawn/Dusk by solar position at
    the orca zone (37N, 8W), and integrates each uneventful passage's duration
@@ -35,7 +35,7 @@
 
 (defn solar-period
   "Classify a UTC `LocalDateTime` as :night/:dawn/:day/:dusk using civil-twilight
-   (dawn/dusk) and visual (sunrise/sunset) boundaries — mirrors solar_encoding.py."
+   (dawn/dusk) and visual (sunrise/sunset) boundaries."
   [^LocalDateTime dt]
   (let [date (.toLocalDate dt)
         civ  (suntimes* date SunTimes$Twilight/CIVIL)

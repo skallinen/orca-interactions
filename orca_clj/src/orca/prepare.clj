@@ -1,10 +1,10 @@
 (ns orca.prepare
-  "Port of bayesian_orca/prepare_data.py to tablecloth.
+  "Data preparation with tablecloth.
 
    Produces the modeling-ready dataset + metadata (category lists and
-   standardization params) from the raw scraped reports. Row order matches the
-   Python pipeline (`incidents + uneventful`, JSON order within each) so the
-   output can be validated row-for-row against modeling_data.csv."
+   standardization params) from the raw scraped reports. Row order is
+   `incidents + uneventful` (JSON order within each) so the output can be
+   validated row-for-row against modeling_data.csv."
   (:require
    [clojure.string :as str]
    [orca.config :as config]
@@ -12,7 +12,7 @@
    [tech.v3.datatype :as dtype]
    [tech.v3.datatype.functional :as dfn]))
 
-;; --- Ordinal encoding maps (config.edn :ordinal-maps, from prepare_data.py) ---
+;; --- Ordinal encoding maps (config.edn :ordinal-maps) ---
 (def boat-length-map (config/cfg :ordinal-maps :boat-length))
 (def depth-map       (config/cfg :ordinal-maps :depth))
 (def distance-map    (config/cfg :ordinal-maps :distance))
@@ -28,7 +28,7 @@
   (when-let [k (s v)] (get m k)))
 
 (defn autopilot-on
-  "1 if value contains 'on', 0 if 'off', else nil (matches prepare_data.py)."
+  "1 if value contains 'on', 0 if 'off', else nil."
   [v]
   (when-let [t (some-> (s v) str/lower-case)]
     (cond (str/includes? t "on") 1
@@ -45,7 +45,7 @@
     [(mapv idx clean) cats]))
 
 (defn standardize
-  "z-score with sample sd (ddof=1, matching pandas .std()) over non-nil values.
+  "z-score with sample sd (ddof=1) over non-nil values.
    Returns [standardized-vals mean sd]. Stats run on a primitive double[] via
    dtype-next; the final pass keeps nil in its original positions (-> NaN)."
   [xs]

@@ -1,7 +1,7 @@
 (ns orca.validate
-  "Validate the Clojure reproduction against the committed Python artifacts.
+  "Validate the Clojure reproduction against the committed reference artifacts.
 
-   Oracles (never re-run Python, just read its outputs):
+   Oracles (never regenerated here, just read):
      - bayesian_orca/data/modeling_data.csv + metadata.json  (data prep)
      - blogpost/posterior_draws.json                         (M3 posterior)"
   (:require

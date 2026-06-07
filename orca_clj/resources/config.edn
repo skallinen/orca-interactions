@@ -3,7 +3,7 @@
 ;; This holds the *inputs* a re-run might tweak — file paths, MCMC settings, the
 ;; orca zone, the ordinal encodings, validation tolerances. Loaded JVM-side via
 ;; orca.config. Computed metadata (categories, standardization) and the
-;; posterior draws are still emitted as JSON (browser-native + the Python
+;; posterior draws are still emitted as JSON (browser-native + the
 ;; validation oracle speaks JSON).
 ;;
 ;; Relative paths resolve against the orca_clj working directory, as before.
@@ -30,7 +30,7 @@
  ;; multi-month "passages") and are dropped from the exposure integration.
  :max-passage-hours 168.0
 
- ;; Ordinal level -> code, verbatim from bayesian_orca/prepare_data.py.
+ ;; Ordinal level -> code.
  :ordinal-maps
  {:boat-length {"Under 10m" 0 "10 - 12.5m" 1 "12.5 - 15m" 2 "Over 15m" 3}
   :depth       {"Up to 20m" 0 "20 - 40m" 1 "40 - 200m" 2 "200m+" 3}

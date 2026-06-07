@@ -1,6 +1,6 @@
 (ns orca.model
-  "Fit M3 (no daylight) with CmdStan and export posterior draws in the same
-   layout as bayesian_orca/refit_no_daylight.py -> blogpost/posterior_draws.json."
+  "Fit M3 (no daylight) with CmdStan and export posterior draws in the
+   blogpost/posterior_draws.json layout."
   (:require
    [orca.config :as config]
    [orca.prepare :as prep]
@@ -9,13 +9,13 @@
    [tablecloth.api :as tc]))
 
 (def model-predictors
-  "Columns that must be complete (matches the Python mask)."
+  "Columns that must be complete (complete-case mask)."
   [:depth_ord_std :autopilot_on :speed_ord_std :boat_length_ord_std
    :distance_ord_std :wind_ord_std :sea_state_ord_std :sailing_mode_idx
    :antifoul_idx :hull_colour_idx :rudder_idx])
 
 (defn complete-cases
-  "Filter to rows with no missing model predictor (Python complete-case mask)."
+  "Filter to rows with no missing model predictor (complete-case mask)."
   [ds]
   (tc/drop-missing ds model-predictors))
 
@@ -41,7 +41,7 @@
      :n_rudder  (ncat :rudder)       :rudder   (idx1 :rudder_idx)}))
 
 (def layout
-  "Output parameter order (matches refit_no_daylight.py)."
+  "Output parameter order (posterior_draws.json layout)."
   ["alpha" "b_depth" "b_autopilot" "b_speed" "b_length" "b_distance" "b_wind"
    "b_sea" "s_0" "s_1" "s_2" "s_3" "s_4" "a_0" "a_1" "a_2" "a_3" "a_4" "a_5"
    "a_6" "a_7" "h_0" "h_1" "h_2" "r_0" "r_1" "r_2" "r_3" "r_4" "r_5"])

@@ -1,7 +1,7 @@
 (ns orca.core
   "End-to-end runner: reproduce the three pieces of the Bayesian orca analysis in
-   the JVM/Clojure + CmdStan stack and validate each against the committed Python
-   artifacts. Run via `clojure -M -m orca.core` or `(orca.core/run-all)`."
+   the JVM/Clojure + CmdStan stack and validate each against the committed
+   reference artifacts. Run via `clojure -M -m orca.core` or `(orca.core/run-all)`."
   (:require
    [orca.model :as model]
    [orca.timeofday :as tod]
@@ -27,7 +27,7 @@
   (println "\n[2/3] M3 logistic regression (CmdStan NUTS, 4x2000) ...")
   (model/run {})
   (let [post (v/validate-posterior {})]
-    (println (format "      posterior match: %s  (max |Δmean|=%.3f, max rel=%.3f vs PyMC)"
+    (println (format "      posterior match: %s  (max |Δmean|=%.3f, max rel=%.3f vs reference)"
                      (:pass? post) (:max-dmean post) (:max-rel post))))
 
   ;; 3. Time-of-day exposure rate model
