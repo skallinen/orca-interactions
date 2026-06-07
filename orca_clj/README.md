@@ -2,6 +2,7 @@
 
 A pure-JVM reproduction of the Python (`bayesian_orca/`) technical analysis:
 
+- **Data acquisition** — JDK `java.net.http` client over the CA orca-survey API (`orca.fetch`)
 - **Data prep** — [tablecloth](https://github.com/scicloj/tablecloth) (`orca.prepare`)
 - **MCMC** — [CmdStan](https://mc-stan.org/) NUTS, driven from Clojure (`orca.stan`)
 - **Solar/time-of-day** — `commons-suncalc` (Java) replacing Python's `astral`
@@ -43,3 +44,21 @@ nix-shell -p clojure jdk21 cmdstan clang gnumake babashka \
 # send forms to it
 echo "(require 'orca.prepare :reload)" | bb re.clj
 ```
+
+## Data acquisition (`orca.fetch`)
+
+`orca.fetch` is the Clojure port of the original Python downloader — an API
+client, not a scraper: it pulls the report list, then fetches every detailed
+incident / uneventful-passage report concurrently (bounded thread pool, with
+retries), flattens each `{:Q :A}` response, and writes `reportlist.json`,
+`all_reports_detailed.json`, and the per-type CSVs into `:api :out-dir`
+(`../orca_data`). The committed `orca_data/` snapshot is the analysis input, so
+a re-fetch is only needed to refresh from the live (slow) API:
+
+```clojure
+(require 'orca.fetch)
+(orca.fetch/fetch-reports)          ; ~5–10 min against the live CA API
+```
+
+Endpoints, headers, worker count, retries and CSV column orderings live under
+`:api` in `resources/config.edn`.
