@@ -11,7 +11,9 @@
        attr_adj = sum_k beta_k (x_k - x_ref_k) over standardized ordinals and
        indicator-minus-reference categoricals; attr_mult = exp(attr_adj). The
        reference vessel (ordinals at training mean, each categorical at its
-       reference level) has attr_mult = 1.
+       reference level) has attr_mult = 1. NOTE: the depth ordinal is
+       intentionally EXCLUDED from attr_mult (it is a spurious location proxy
+       that double-counts the spatial field; see `attr-x-ref`).
 
      - spatial (Part B): a seasonally-drifting occupancy field. The point is
        drifted by the day-of-year cycle, an RBF basis is evaluated at the
@@ -19,7 +21,10 @@
        RR = exp(f)/Z is mean ~1 over sailed waters (bounded).
 
    Absolute level is anchored by a Fermi exposure rate h0 = -ln(1-base_rate)/ref_nm
-   (hazard per nautical mile). The exposure layer accumulates lambda = sum
+   (hazard per nautical mile). base_rate is calibrated by REFERENCE ROUTE: it is
+   chosen so a fixed W-Portugal->Gibraltar reference passage reads ~2.5% (not by
+   matching a population mean over all passages, which was dominated by short
+   coastal hops and forced the per-nm hazard too high). The exposure layer accumulates lambda = sum
    hazard_per_nm * nm, the EXPECTED interaction count (additive across segments).
    lambda is then turned into P(>=1 interaction) by `count->prob`: a clustered
    (negative-binomial) aggregation on an effective, saturating exposure rather than
@@ -186,9 +191,15 @@
   (let [oi (:ord-idx cfg)
         ci (:cat-idx cfg)
         ref (:reference cfg)
+        ;; DEPTH INTENTIONALLY OMITTED. The fitted :depth ordinal beta (~+0.9,
+        ;; "deeper => riskier") is a spurious LOCATION proxy: depth is a property
+        ;; of where you are, not of the vessel, so including it in the attr
+        ;; (vessel/condition) multiplier double-counts the spatial RBF occupancy
+        ;; field. It is dropped here and will be reintroduced PROPERLY on the
+        ;; spatial side in a later phase. (depth_ord stays in the posterior JSON
+        ;; layout; it is simply unused by the vessel multiplier now.)
         ord-contribs
-        {(get oi :depth)    (z cfg (:depth-ord passage) :depth)
-         (get oi :distance) (z cfg (:distance-ord passage) :distance)
+        {(get oi :distance) (z cfg (:distance-ord passage) :distance)
          (get oi :speed)    (z cfg (:speed boat) :speed)
          (get oi :length)   (z cfg (:length boat) :length)
          (get oi :wind)     (z cfg (:wind passage) :wind)
@@ -257,12 +268,21 @@
 ;; percentile (CI) orderings are preserved.
 
 (def ^{:doc "Negative-binomial dispersion r (gamma-Poisson clustering). Small =>
-  strong pod/day clustering => P(>=1) pulled well below the Poisson value."}
-  dispersion-r 0.4)
+  strong pod/day clustering => P(>=1) pulled well below the Poisson value.
+  Calibrated to 0.3 (softened from 0.4): combined with eff-lambda-max=0.15 it
+  gives a gentle saturation whose ceiling 1-(1+0.15/0.3)^(-0.3) ~ 11.5% lets long
+  hotspot routes settle to a defensible single-digit/low-double-digit value
+  instead of the old hard softcap that clipped every long route to one level."}
+  dispersion-r 0.3)
 
 (def ^{:doc "Effective-exposure ceiling: the most independent expected encounters a
-  single planned passage can credibly accumulate (within-route correlation cap)."}
-  eff-lambda-max 0.5)
+  single planned passage can credibly accumulate (within-route correlation cap).
+  Calibrated to 0.15 (softened from 0.5). Together with dispersion-r=0.3 this is
+  the GENTLE softcap from the Phase-1 recalibration: short hops read <1%, the
+  W-Portugal->Gibraltar reference route ~2.5%, a ~900nm circumnavigation ~6%, and
+  the absolute ceiling on a saturated route is ~11.5% (no route approaches the
+  old ~30%)."}
+  eff-lambda-max 0.15)
 
 (defn effective-lambda
   "Saturating map from raw expected-count lambda to EFFECTIVE independent exposure:
@@ -403,16 +423,20 @@
 
 (defn heatmap-static
   "Per-cell location+season static part:
-   {:rr mean-RR(cell,doy) :static-mult exp(beta_depth*z + beta_dist*z) :scale h0*ref_nm}.
-   Uses the posterior-mean draws. Rebuild when doy/base-rate/ref-nm change."
+   {:rr mean-RR(cell,doy) :static-mult exp(beta_dist*z) :scale h0*ref_nm}.
+   Uses the posterior-mean draws. Rebuild when doy/base-rate/ref-nm change.
+
+   The depth ordinal term is intentionally OMITTED here too (see `attr-x-ref`):
+   it is a spurious location proxy double-counting the spatial RBF field. Only
+   the distance-from-coast ordinal contributes to the static multiplier; the
+   depth-ord argument is retained in the signature but unused."
   [cfg mean-sd mean-attr lat lon doy depth-ord distance-ord base-rate ref-nm]
   (let [basis (spatial-basis cfg lat lon doy)
         rr    (* (rr-draw cfg mean-sd basis) (support-mask basis))
         oi    (:ord-idx cfg)
         smult (js/Math.exp
-               (+ (* (nth mean-attr (get oi :depth)) (z cfg depth-ord :depth))
-                  (* (nth mean-attr (get oi :distance))
-                     (z cfg distance-ord :distance))))]
+               (* (nth mean-attr (get oi :distance))
+                  (z cfg distance-ord :distance)))]
     {:rr rr :static-mult smult :scale (* (h0 base-rate ref-nm) ref-nm)}))
 
 (defn dynamic-scalar

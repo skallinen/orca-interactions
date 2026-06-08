@@ -12,6 +12,9 @@ __pycache__/
 # Route-planner geo data prep scratch (intermediate GDAL/ERDDAP/coastline files)
 tmp_geo/
 
+# Route-planner calibration harness (local sim/calibration scratch)
+route-planner/tmp_sim/
+
 # OS
 .DS_Store
 
