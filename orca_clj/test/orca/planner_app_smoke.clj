@@ -508,6 +508,20 @@
     {:pass? (boolean (and n (> n 6000) (< n 34933)))
      :detail (str "static-cells=" n)}))
 
+(defn- check-route-distance
+  "The selected track's length is reported in nautical miles. A 1 deg latitude
+   leg (36,-5)->(37,-5) is 60 nm by definition, so routeDistance ~= 60 and the
+   #route-distance node shows it."
+  [{:keys [page]}]
+  (lay-route! page [[36.0 -5.0] [37.0 -5.0]] 232)
+  (let [nm  (num-of (p-eval page "() => window.__planner.routeDistance()"))
+        dom (p-eval
+              page
+              "() => document.getElementById('route-distance').textContent")]
+    {:pass? (boolean (and nm (< (Math/abs (- nm 60.0)) 1.5)
+                          dom (str/includes? (str dom) "nm")))
+     :detail (str "routeDistance=" nm " #route-distance=" (pr-str dom))}))
+
 (def checks
   [{:label "no console/page errors" :check-fn check-no-errors}
    {:label "#status-loaded contains Ready" :check-fn check-status-loaded}
@@ -529,6 +543,8 @@
     :check-fn check-risk-opacity}
    {:label "#15 risk field renders on finer lattice w/ coastal fill"
     :check-fn check-render-resolution}
+   {:label "#16 selected track shows distance in nm"
+    :check-fn check-route-distance}
    {:label "I2.2 delete + move (delete-readd + drag changes risk)"
     :check-fn check-edit-delete-move}
    {:label "I2.3 low-zoom field painted" :check-fn check-low-zoom-field}])

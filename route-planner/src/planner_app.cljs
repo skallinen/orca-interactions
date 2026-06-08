@@ -666,7 +666,7 @@
                                          segs)
                                    doy base ref)]
         (reset! segment-summaries summaries)
-        (reset! route-summary route)
+        (reset! route-summary (assoc route :nm (reduce + 0.0 (map :nm segs))))
         (draw-segments! segs summaries))
       (do (reset! segment-summaries [])
           (reset! route-summary nil))))
@@ -710,11 +710,12 @@
         ref   (:ref-nm pass)
         segs  (if (>= (count pts) 2) (build-segments pts) [])]
     (when (and cfg (seq segs))
-      (core/route-risk cfg boat pass
-                       (mapv #(select-keys % [:lat :lon :depth-ord
-                                              :distance-ord :nm])
-                             segs)
-                       doy base ref))))
+      (assoc (core/route-risk cfg boat pass
+                              (mapv #(select-keys % [:lat :lon :depth-ord
+                                                     :distance-ord :nm])
+                                    segs)
+                              doy base ref)
+             :nm (reduce + 0.0 (map :nm segs))))))
 
 (defn refresh-comparison!
   "Recompute every route's whole-route summary for the comparison panel."
@@ -844,6 +845,7 @@
                                (:doy @passage-params))
              :incidentCount  (fn [] (count (incidents-in-window)))
              :staticCellCount (fn [] (count @static-cells))
+             :routeDistance  (fn [] (if @route-summary (:nm @route-summary) -1))
              :setRiskOpacity (fn [o] (set-risk-opacity! o)
                                (when-let [l @risk-heat-layer]
                                  (.. l -options -opacity)))
@@ -916,6 +918,11 @@
 
 (defn- pct-str [x]
   (str (.toFixed (* 100.0 x) 2) "%"))
+
+(defn- nm-str
+  "Format a nautical-mile distance: 1 decimal under 100 nm, whole nm above."
+  [nm]
+  (str (.toFixed nm (if (< nm 100) 1 0)) " nm"))
 
 ;; ── Vessel / conditions / model controls (Phase 7.1) ─────────────────────────
 
@@ -1079,6 +1086,8 @@
      [:div.num "First segment: "
       [:span#segment-risk-0
        (if (seq summaries) (pct-str (:median (first summaries))) "")]]
+     [:div.num.mono "Distance: "
+      [:span#route-distance (if route (nm-str (:nm route)) "—")]]
      [:h2 {:style {:margin-top "12px"}} "Total risk"]
      [:div.num.mono "Median: "
       [:span#route-total-risk (if route (pct-str (:median route)) "—")]]
@@ -1133,7 +1142,8 @@
              (if summ
                (str (.toFixed (* 100.0 (:median summ)) 1) "%"
                     " [" (.toFixed (* 100.0 (:lo89 summ)) 1) "–"
-                    (.toFixed (* 100.0 (:hi89 summ)) 1) "% 89% CI]")
+                    (.toFixed (* 100.0 (:hi89 summ)) 1) "% 89% CI]"
+                    " · " (nm-str (:nm summ)))
                "— draw a route")]])))]))
 
 (defn caveat-note
