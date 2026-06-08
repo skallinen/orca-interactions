@@ -118,25 +118,40 @@ This project produces its data artifacts and gates it:
 
 | Artifact | What it is |
 |----------|------------|
-| `route-planner/posterior_planner.json` | 500 posterior draws (30 base M3 columns, copied unchanged from `blogpost/posterior_draws.json`) plus the fitted spatial block |
+| `route-planner/posterior_planner.json` | The `presence-effort-seasonal` model: 500 draws of an `attr` block (relative vessel effects) and a `spatial` block (occupancy field + seasonal drift). Schema in `route-planner/data/POSTERIOR_SCHEMA.md` |
 | `route-planner/geo_grid.json`          | Depth/distance ordinals for 34,933 sea cells over 25-50°N, 20°W-5°E at 0.1° |
+| `route-planner/data/*`                 | Data-prep artifacts: `harbor_coords.edn`, `planner_dataset.edn`, `effort_grid.json`, `background_sample.edn` |
 
 | Source | What it does |
 |--------|--------------|
-| `src/orca/planner_fit.clj` (`orca.planner-fit`) | Bayesian presence/background spatial fit: 216 incident locations vs 3,000 sea-cell pseudo-absences, RBF basis (50 centers, lengthscale 346.875 km, haversine metric); exports `posterior_planner.json` |
-| `stan/spatial.stan`                              | The spatial smoother model |
+| `src/orca/planner_fit.clj` (`orca.planner-fit`) | Fits both model parts, calibrates, exports `posterior_planner.json` (`clojure -X:planner-fit`) |
+| `stan/attr_logit.stan`                           | Part A: attribute logistic (incident vs uneventful) |
+| `stan/spatial.stan`                              | Part B: occupancy field logistic (`tau ~ normal(0,0.4)`) |
 | `scripts/gen_geo_grid.clj`                       | Babashka geo-grid generator, writes `geo_grid.json` |
+| `scripts/prepare_planner_data.clj`              | Babashka: extract the prepared dataset + day-of-year |
+| `scripts/gen_effort_surface.clj`               | Babashka: harbor-track effort surface + effort-weighted background |
+| `scripts/geocode_harbors.clj`                  | Babashka: cache-aware Claude-API harbor geocoder |
 
 ### Modelling decision
 
-The spatial term is fit **separately** from the 30 base M3 attribute
-coefficients and added as an offset to the M3 logit. The base columns are copied
-unchanged from `blogpost/posterior_draws.json`. The reason is that the
-uneventful-passage reports carry no coordinates, so a joint fit of attributes and
-location is not posed; the spatial smoother instead learns where incidents
-concentrate (presence) against sea-cell pseudo-absences (background). The fit is
-faithful, so risk saturates near the Strait of Gibraltar and the
-Galician/Portuguese coast, which is where incidents actually concentrate.
+Risk is a Poisson hazard `h0 * RR(loc, day-of-year) * attr_mult(vessel)`, fit as
+two logistic models combined at runtime:
+
+- **Part A** (`attr_logit.stan`): incident vs uneventful reports on their shared
+  attributes (depth, distance, sailing mode, antifoul, hull, rudder, speed,
+  length, wind, sea) -> relative vessel effects. Identified for both classes
+  because it drops the spatial term (autopilot is excluded; incidents lack it).
+- **Part B** (`spatial.stan`): incident locations vs an **effort-weighted**
+  background (harbor-to-harbor sailing tracks, not uniform sea cells) -> a bounded
+  RBF occupancy field whose centre drifts north/south with day-of-year
+  (ecology-fixed sinusoid, peak-north in late summer). Per-draw normalization
+  makes `RR` mean ~1 over sailed waters.
+
+This replaces the earlier presence/**background** smoother, whose uniform
+pseudo-absences produced a ~13-logit hotspot and a runaway 100% risk for any
+passage near Gibraltar. The rebuilt model reads ~20% (with a real 89% CI) for a
+W-Portugal -> Gibraltar passage, < 1% for an open-Atlantic hop, and its hotspot
+moves with the season.
 
 ### Headless gates
 
@@ -145,11 +160,11 @@ gate the app:
 
 ```bash
 clojure -X:planner-smoke   # core math: runs route-planner/test/core_test.html
-clojure -X:app-smoke       # full app suite (Checks #1-#10) on index.html
+clojure -X:app-smoke       # full app suite + sanity/season checks on index.html
 ```
 
-`:planner-smoke` asserts the pure-core math (parity vs the blog calculator,
-Poisson round-trip, CI ordering, monotonicity, spatial hotspot > open ocean).
+`:planner-smoke` asserts the pure-core math (Poisson round-trip, CI ordering,
+monotonicity, spatial hotspot > open ocean, bounded field, seasonal drift).
 `:app-smoke` loads the real app in headless Chromium and drives it through the
 `window.__planner` hooks (data load, heatmap re-tint, waypoint/segment/route
 risk, parity vs calculator).

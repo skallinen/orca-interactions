@@ -96,21 +96,34 @@ A standalone ClojureScript app (`route-planner/index.html` +
 that this project produces data for and gates. See `route-planner/README.md` for
 the app itself and `README.md` here for the full breakdown.
 
-- **Artifacts:** `route-planner/posterior_planner.json` (500 draws: 30 base M3
-  columns copied unchanged from `blogpost/posterior_draws.json` plus the fitted
-  spatial block) and `route-planner/geo_grid.json` (depth/distance ordinals for
-  34,933 sea cells). The base columns are oracle-derived; do not regenerate them.
-- **Sources:** `src/orca/planner_fit.clj` (`orca.planner-fit`, the spatial fit),
-  `stan/spatial.stan` (treat as a `.stan` file: never run the Clojure formatter
-  on it), and `scripts/gen_geo_grid.clj` (Babashka grid generator).
-- **Key invariant:** the spatial term is a separate Bayesian presence/background
-  smoother (216 incident locations vs 3,000 sea-cell pseudo-absences, RBF basis,
-  50 centers, 346.875 km lengthscale, haversine) added as an offset to the M3
-  logit. It is fit separately because the uneventful reports lack coordinates.
-  Risk saturating near Gibraltar and the Galician coast is correct, not a bug.
+- **Artifacts:** `route-planner/posterior_planner.json` (the rebuilt
+  `presence-effort-seasonal` model: 500 draws of an `attr` block plus a
+  `spatial` block; schema in `route-planner/data/POSTERIOR_SCHEMA.md`),
+  `route-planner/geo_grid.json` (depth/distance ordinals for 34,933 sea cells),
+  and the data-prep artifacts in `route-planner/data/` (`harbor_coords.edn`,
+  `planner_dataset.edn`, `effort_grid.json`, `background_sample.edn`).
+- **Sources:** `src/orca/planner_fit.clj` (`orca.planner-fit`, the two-part fit +
+  export, `clojure -X:planner-fit`), `stan/attr_logit.stan` + `stan/spatial.stan`
+  (treat as `.stan`: never run the Clojure formatter on them), and the Babashka
+  scripts `scripts/gen_geo_grid.clj`, `scripts/prepare_planner_data.clj`
+  (extract + day-of-year), `scripts/gen_effort_surface.clj` (harbor-track effort
+  surface + effort-weighted background), `scripts/geocode_harbors.clj`
+  (cache-aware Claude-API geocoder; the committed coords were Claude-bootstrapped).
+- **Key invariant:** risk is a Poisson hazard `h0 * RR(loc, day-of-year) *
+  attr_mult(vessel)`. **Part A** (`attr_logit.stan`) is a logistic of incident
+  vs uneventful reports on their shared attributes -> relative vessel effects
+  (no autopilot; absent on incidents). **Part B** (`spatial.stan`,
+  `tau ~ normal(0,0.4)`) is a logistic of incident locations vs
+  effort-weighted background -> a bounded RBF occupancy field that drifts
+  north/south with day-of-year (ecology-fixed sinusoid). Per-draw normalization
+  makes `RR` mean ~1 over sailed waters, so it cannot saturate: a
+  W-Portugal -> Gibraltar passage reads ~20% with a real 89% CI, not 100%.
+  `h0 = -ln(1-base_rate)/ref_nm` sets the absolute level. The old
+  presence/**background** smoother (uniform pseudo-absences -> runaway 100%) was
+  replaced for exactly this reason; do not reintroduce it.
 - **Gates:** `clojure -X:planner-smoke` (pure-core math) and `clojure -X:app-smoke`
-  (full app suite, Checks #1-#10, headless Chromium). Keep both green. The
-  `-smoke` runners are JVM-Playwright; if Chromium is missing run
+  (full app suite incl. the sanity/season checks, headless Chromium). Keep both
+  green. The `-smoke` runners are JVM-Playwright; if Chromium is missing run
   `clojure -X:app-smoke orca.planner-app-smoke/install` once.
 
 ## CmdStan notes

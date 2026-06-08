@@ -30,13 +30,14 @@ The headless tests use the JDK `SimpleFileServer` instead
 
 | File | What it is |
 |------|------------|
-| `posterior_planner.json` | 500 posterior draws: the 30 base M3 attribute columns (copied unchanged from the blog's `posterior_draws.json`) plus the fitted spatial block. |
+| `posterior_planner.json` | The `presence-effort-seasonal` model: 500 draws of an `attr` block (relative vessel effects) and a `spatial` block (occupancy field + seasonal drift). Schema documented in `data/POSTERIOR_SCHEMA.md`. |
 | `geo_grid.json`          | Depth and distance ordinals for 34,933 sea cells over 25-50°N, 20°W-5°E at 0.1°. |
+| `data/*`                 | Data-prep inputs to the fit: geocoded harbors, the prepared report dataset, the sailing-effort grid, and the effort-weighted background sample. |
 | `../orca_reportlist.json`| The incident report list (repo root), used for the historical-incident heatmap and the spatial term's incident locations. |
 
-The two `.json` files in this directory are produced by the `orca_clj` tooling
-project (`src/orca/planner_fit.clj`, `stan/spatial.stan`,
-`scripts/gen_geo_grid.clj`).
+These files are produced by the `orca_clj` tooling project
+(`src/orca/planner_fit.clj`, `stan/attr_logit.stan`, `stan/spatial.stan`, and the
+`scripts/` Babashka generators).
 
 ## Tests
 
@@ -45,7 +46,7 @@ Both headless gates live in `orca_clj` and run in a separate JVM with Playwright
 ```bash
 cd orca_clj
 clojure -X:planner-smoke   # pure-core math (route-planner/test/core_test.html)
-clojure -X:app-smoke       # full app suite, Checks #1-#10, headless Chromium
+clojure -X:app-smoke       # full app suite + sanity/season checks, headless Chromium
 ```
 
 If Chromium is missing, run `clojure -X:app-smoke orca.planner-app-smoke/install`
@@ -53,19 +54,22 @@ once.
 
 ## Modelling caveats
 
-- **Risk is relative to a reference passage**, not an independently calibrated
-  absolute probability. The numbers compare routes and vessel configurations
-  against a fixed-length reference leg (default 100 nm), shown in the in-app
-  caveat.
-- **Risk saturates near the hotspots.** The spatial term shows where incidents
-  concentrate (Strait of Gibraltar, Galician/Portuguese coast) on top of
-  depth/distance, so near those areas the modelled risk pins close to 1. That is
-  the model being faithful to the data, not a defect.
+- **Risk is a Poisson hazard over the route.** Per nautical mile the hazard is
+  `h0 * RR(location, day-of-year) * attr_mult(vessel)`; a segment's probability
+  is `1 - exp(-hazard * nm)` and the whole-route probability adds the per-segment
+  rates. The absolute level `h0 = -ln(1-base_rate)/ref_nm` is anchored to the
+  base-rate over a reference passage (defaults shown in the in-app caveat), so
+  treat the numbers as calibrated-but-approximate, best read as comparisons.
+- **The spatial term is a bounded, season-drifting occupancy field.** `RR` is the
+  relative risk of orca presence, normalized to mean ~1 over waters boats
+  actually sail, so hotspots are higher but bounded (no runaway). Its centre
+  drifts north in summer and back to the Strait in late winter, following the
+  pod's tuna cycle — so set the **Month** control for the passage you mean.
+- **Vessel/condition effects are relative.** They come from a logistic of
+  incident vs uneventful reports (depth, distance, sailing mode, antifoul, hull,
+  rudder, speed, length, wind, sea). Autopilot is not a predictor (incident
+  reports lack the field), so that control is shown disabled.
 - **The heatmap colour is a posterior-mean point estimate.** It is a fast
-  single-number tint of each cell. The route numbers carry the full 89% credible
-  interval (low / median / high), so trust those for any actual comparison.
-- **The spatial term is fit separately** from the base attribute coefficients
-  and added as an offset to the M3 logit. The uneventful-passage reports have no
-  coordinates, so location is learned by a presence/background smoother (incident
-  locations vs sea-cell pseudo-absences), while the attribute columns are copied
-  unchanged from the blog posterior.
+  single-number tint of each cell at the current month/vessel. The route numbers
+  carry the full 89% credible interval (low / median / high), so trust those for
+  any actual comparison.
