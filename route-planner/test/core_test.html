@@ -62,20 +62,20 @@
           ;; a point for the Poisson identity
           lat 36.0 lon -8.0]
 
-      ;; 1. POISSON ROUND-TRIP IDENTITY: a single ref_nm segment ⇒
-      ;;    p = 1 - exp(-h0·ref_nm·RR·attr_mult) per draw. We reconstruct that
+      ;; 1. AGGREGATION ROUND-TRIP IDENTITY: a single ref_nm segment ⇒
+      ;;    p = count->prob(h0·ref_nm·RR·attr_mult) per draw. We reconstruct that
       ;;    per draw from the core primitives and check it matches segment-risk's
       ;;    median (nm = ref_nm) to < 1e-9.
       (let [plan (c/point-plan cfg lat lon doy boat pass2 base ref-nm)
             ps   (mapv (fn [[sdraw beta]]
                          (let [lam (* (c/plan-hazard-draw cfg plan sdraw beta)
                                       ref-nm)]
-                           (- 1.0 (js/Math.exp (- lam)))))
+                           (c/count->prob lam)))
                        (c/draw-pairs cfg))
             sr   (c/segment-risk cfg lat lon doy boat pass2 ref-nm base ref-nm)
             med  (c/percentile (vec (sort ps)) 0.50)
             diff (js/Math.abs (- (:median sr) med))]
-        (log-result (< diff 1e-9) "poisson round-trip identity"
+        (log-result (< diff 1e-9) "aggregation round-trip identity"
                     "median-diff=" diff))
 
       ;; 2. CI ORDERING for segment-risk and route-risk (lo < med < hi).
@@ -156,7 +156,44 @@
             med    (mask 37.0 4.0 232)]     ;; deep Mediterranean (void)
         (log-result (and (> sailed 0.8) (< med 0.1))
                     "support mask: sailed ~1, void ~0"
-                    "sailed=" sailed "void=" med)))
+                    "sailed=" sailed "void=" med))
+
+      ;; 8. CLUSTERED AGGREGATION DE-SATURATES. count->prob must (a) match the old
+      ;;    Poisson for tiny lambda (short legs / open water), (b) sit strictly
+      ;;    below Poisson for large lambda (overdispersion), and (c) cap below a
+      ;;    credible ceiling no matter how large lambda grows (effective exposure).
+      (let [tiny  (c/count->prob 1e-4)
+            big   (c/count->prob 5.0)
+            huge  (c/count->prob 1e6)
+            pois5 (- 1.0 (js/Math.exp -5.0))]
+        (log-result (< (js/Math.abs (- tiny 1e-4)) 1e-6)
+                    "count->prob ~ Poisson for tiny lambda" "p=" tiny)
+        (log-result (< big pois5) "count->prob below Poisson for large lambda"
+                    "nb=" big "poisson=" pois5)
+        (log-result (< huge 0.4) "count->prob capped below a credible ceiling"
+                    "p(huge)=" huge))
+
+      ;; 9. NO ROUTE SATURATION: a deliberately pathological long passage through
+      ;;    the summer Galician hotspot in a worst-case (very shallow, near-shore)
+      ;;    vessel must NOT read near-certain. The whole-route median stays well
+      ;;    below ~40% even as a typical mid-water passage stays single-digit.
+      (let [worst-boat {:speed 0 :length 0 :sailing "Motoring" :antifoul "Coppercoat"
+                        :hull "Dark colour" :rudder "Spade"}
+            worst-pass {:wind 4 :sea 3 :daylight "Day" :depth-ord 4 :distance-ord 0}
+            long-segs  (mapv (fn [i]
+                               {:lat (+ 43.0 (* 0.2 i)) :lon -10.0
+                                :depth-ord 4 :distance-ord 0 :nm 80.0})
+                             (range 12))   ;; ~960 nm through the hotspot
+            rr-worst (:median (c/route-risk cfg worst-boat worst-pass long-segs
+                                            232 base ref-nm))
+            typ-segs [{:lat 36.6 :lon -7.0 :depth-ord 2 :distance-ord 2 :nm 90.0}
+                      {:lat 36.1 :lon -5.6 :depth-ord 2 :distance-ord 2 :nm 90.0}]
+            rr-typ   (:median (c/route-risk cfg boat (passage 2 2) typ-segs
+                                            232 base ref-nm))]
+        (log-result (< rr-worst 0.4) "worst-case long hotspot route not saturated"
+                    "median=" rr-worst)
+        (log-result (< rr-typ 0.10) "typical passage stays single-digit"
+                    "median=" rr-typ)))
 
     (catch :default e
       (js/console.error (str "EXCEPTION during tests: " e))
