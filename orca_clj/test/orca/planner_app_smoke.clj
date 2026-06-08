@@ -500,12 +500,12 @@
                   " new-errors=" (not no-new-errs?))}))
 
 (defn- check-render-resolution
-  "The risk field renders on a 0.2 deg lattice with coastal-land fill, so the
-   static-cell count is well above the old 0.3 deg sea-only sub-sample (~3800)
-   and below the full 0.1 deg grid (34933)."
+  "The risk field renders one cell per 0.1 deg SEA cell (land masked at the
+   coastline), so the render-cell count is most of the 34933-cell grid — far above
+   the old 0.3 deg sub-sample (~3800)."
   [{:keys [page]}]
   (let [n (num-of (p-eval page "() => window.__planner.staticCellCount()"))]
-    {:pass? (boolean (and n (> n 6000) (< n 34933)))
+    {:pass? (boolean (and n (> n 25000) (<= n 34933)))
      :detail (str "static-cells=" n)}))
 
 (defn- check-route-distance
@@ -541,7 +541,7 @@
     :check-fn check-incident-window}
    {:label "#14 risk-heatmap opacity slider drives the layer"
     :check-fn check-risk-opacity}
-   {:label "#15 risk field renders on finer lattice w/ coastal fill"
+   {:label "#15 risk field renders per-0.1deg sea cell (land masked)"
     :check-fn check-render-resolution}
    {:label "#16 selected track shows distance in nm"
     :check-fn check-route-distance}

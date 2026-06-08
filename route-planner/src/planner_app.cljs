@@ -65,6 +65,10 @@
 ;; the GridLayer's createTile painter. A flat JS array parallel to static-cells.
 (defonce cell-intensities (atom #js []))
 
+;; "li,oi" → index-into-static-cells JS object, so the tile painter can look up
+;; only the cells whose 0.1° grid coordinates fall inside the tile it is drawing.
+(defonce cell-index (atom #js {}))
+
 ;; ── Route-drawing state (Phase 6) ────────────────────────────────────────────
 
 ;; Leaflet object handles for the active route's waypoint markers and the
@@ -187,34 +191,41 @@
   "Warm yellow→orange→red ramp for the historical-incident heatmap."
   #js {"0.4" "#ffd166" "0.7" "#ff9f1c" "1.0" "#e63946"})
 
-;; Render lattice stride (over the 0.1° grid) and coastal-land fill radius.
-(def ^:private render-stride 2)
-(def ^:private fill-radius 3)
+;; The model field (the costly 84-term RBF) is smooth, so we evaluate it only on a
+;; coarse `model-stride`×0.1° sub-grid, but RENDER every 0.1° sea cell (each borrows
+;; the nearest coarse sample). That way the painted region is exactly the sea — land
+;; is masked at the grid's own 0.1° resolution, with no bleed past the coastline —
+;; while a month change only recomputes the coarse samples.
+(def ^:private model-stride 3)
 
-(defn- nearest-sea-cell
-  "The {d,c} of the nearest sea cell to integer-tenths (li,oi) within fill-radius
-   rings, or nil. Used to fill coastal-land lattice points (so the field covers
-   the coast); deeper inland finds nothing and is left unpainted."
-  [cells li oi]
-  (loop [r 1]
-    (when (<= r fill-radius)
+(defn- key->ints
+  "Parse an integer-tenths grid key \"LI,OI\" into [li oi]."
+  [k]
+  (let [c (.split k ",")]
+    [(js/parseInt (aget c 0) 10) (js/parseInt (aget c 1) 10)]))
+
+(defn- nearest-coarse
+  "The coarse sample S nearest integer-tenths (li,oi), searching outward rings up
+   to model-stride+1 cells (every sea cell has a coarse sample that close)."
+  [coarse li oi]
+  (loop [r 0]
+    (when (<= r (inc model-stride))
       (or (some (fn [[di dj]]
                   (when (= r (max (js/Math.abs di) (js/Math.abs dj)))
-                    (get cells (str (+ li di) "," (+ oi dj)))))
+                    (get coarse (str (+ li di) "," (+ oi dj)))))
                 (for [di (range (- r) (inc r))
                       dj (range (- r) (inc r))]
                   [di dj]))
           (recur (inc r))))))
 
 (defn- build-static-cells!
-  "Render the field on a `render-stride`×0.1° lattice over the grid bbox, with
-   coastal-land fill, and precompute the per-cell location+season static part once.
-   Each lattice point uses its own sea cell's depth/distance, or — for coastal land
-   within fill-radius of the sea — the nearest sea cell's depth/distance, so the
-   field tiles continuously up to the coast. Each entry's :S is the
-   {:rr :static-mult :scale} map from core/heatmap-static (depends on lat/lon, the
-   cell depth/distance, the current doy + base-rate + ref-nm). Rebuild when
-   doy/base-rate/ref-nm change. Stores [{:lat :lon :S} …]."
+  "Precompute the per-cell location+season static part once. The costly model
+   field is sampled on a coarse model-stride sub-grid; every 0.1° SEA cell is then
+   a render cell that borrows the nearest coarse sample's :S (so the painted field
+   masks exactly to the sea at 0.1°). Each entry's :S is the {:rr :static-mult
+   :scale} map from core/heatmap-static. Rebuild when doy/base-rate/ref-nm change.
+   Stores [{:li :oi :lat :lon :S} …] in static-cells and a \"li,oi\"→index JS
+   object in cell-index (so the painter can look up only the cells in a tile)."
   [cfg grid]
   (let [mean-sd   (core/mean-spatial-draw cfg)
         mean-attr (core/mean-attr-draw cfg)
@@ -223,22 +234,36 @@
         base-rate (:base-rate pass)
         ref-nm    (:ref-nm pass)
         cells     (get grid "cells")
-        bounds    (get grid "bounds")
-        li-min    (js/Math.round (* (get bounds "lat_min") 10.0))
-        li-max    (js/Math.round (* (get bounds "lat_max") 10.0))
-        oi-min    (js/Math.round (* (get bounds "lon_min") 10.0))
-        oi-max    (js/Math.round (* (get bounds "lon_max") 10.0))
-        out       (transient [])]
-    (doseq [li (range li-min (inc li-max) render-stride)
-            oi (range oi-min (inc oi-max) render-stride)]
-      (when-let [v (or (get cells (str li "," oi))
-                       (nearest-sea-cell cells li oi))]
-        (let [lat (/ li 10.0)
-              lon (/ oi 10.0)
-              s   (core/heatmap-static cfg mean-sd mean-attr lat lon doy
-                                       (get v "d") (get v "c") base-rate ref-nm)]
-          (conj! out {:lat lat :lon lon :S s}))))
-    (reset! static-cells (persistent! out))
+        ;; 1. coarse model samples on the model-stride sub-grid (sea cells only).
+        coarse    (persistent!
+                    (reduce
+                      (fn [m [k v]]
+                        (let [[li oi] (key->ints k)]
+                          (if (and (zero? (mod li model-stride))
+                                   (zero? (mod oi model-stride)))
+                            (assoc! m k (core/heatmap-static
+                                          cfg mean-sd mean-attr
+                                          (/ li 10.0) (/ oi 10.0) doy
+                                          (get v "d") (get v "c") base-rate ref-nm))
+                            m)))
+                      (transient {})
+                      cells))
+        ;; 2. render every sea cell, borrowing the nearest coarse sample's S.
+        idx       #js {}
+        out       (reduce
+                    (fn [[acc i] [k _v]]
+                      (let [[li oi] (key->ints k)
+                            s (nearest-coarse coarse li oi)]
+                        (if s
+                          (do (aset idx (str li "," oi) i)
+                              [(conj! acc {:li li :oi oi :lat (/ li 10.0)
+                                           :lon (/ oi 10.0) :S s})
+                               (inc i)])
+                          [acc i])))
+                    [(transient []) 0]
+                    cells)]
+    (reset! static-cells (persistent! (first out)))
+    (reset! cell-index idx)
     (count @static-cells)))
 
 ;; ── Live-risk field renderer: a custom Canvas L.GridLayer (I2.3) ──────────────
@@ -251,10 +276,9 @@
 ;; yellow→red ramp, so a hotspot is always red and quiet water always green at any
 ;; zoom, with no stripes.
 
-;; The field is rendered on a `render-stride`×0.1° lattice with coastal-land fill,
-;; so paint a cell-deg square centred on each cell so the field tiles seamlessly
-;; right up to (and slightly over) the coastline.
-(def ^:private cell-deg (* render-stride 0.1))
+;; Each render cell is one 0.1° sea cell, so paint a 0.1° square centred on it: the
+;; squares exactly tile the sea cells, masking land at the coastline with no bleed.
+(def ^:private cell-deg 0.1)
 (def ^:private cell-half-deg (/ cell-deg 2.0))
 
 ;; FIXED display domain for the colour ramp (intensity = sigmoid(D+S)·daylight).
@@ -317,36 +341,43 @@
     (.redraw layer)))
 
 (defn- paint-risk-tile!
-  "Paint the sub-sampled risk cells onto one map tile's canvas. `coords` carries
-   the tile's z/x/y; we ask the map to project each cell's lat/lon corners to
-   layer pixels, subtract the tile's pixel origin, and fill the rectangle."
+  "Paint the risk cells that fall inside one map tile. `coords` carries the tile's
+   z/x/y. We unproject the tile's pixel corners to lat/lon, then iterate only the
+   integer-tenths cells in that range, looking each up in cell-index (O(1)) — so
+   the cost is the cells in the tile, not the whole 0.1° grid."
   [m canvas coords]
-  ;; Leaflet's default tile size is 256 px square (we don't override it), so the
-  ;; CRS pixel square covered by tile (x,y) at zoom z is [x*256,(x+1)*256] ×
-  ;; [y*256,(y+1)*256].
+  ;; Leaflet's default tile size is 256 px square; tile (x,y) at zoom z covers the
+  ;; CRS pixel square [x*256,(x+1)*256] × [y*256,(y+1)*256].
   (let [ctx  (.getContext canvas "2d")
         z    (.-z coords)
         tw   256
         th   256
         ox   (* (.-x coords) tw)
         oy   (* (.-y coords) th)
-        cells @static-cells
-        cell-ints @cell-intensities]
+        idx  @cell-index
+        cell-ints @cell-intensities
+        ;; tile geographic bounds (nw = top-left = max lat / min lon).
+        nw   (.unproject m (js/L.point ox oy) z)
+        se   (.unproject m (js/L.point (+ ox tw) (+ oy th)) z)
+        li-lo (dec (js/Math.round (* (.-lat se) 10.0)))
+        li-hi (inc (js/Math.round (* (.-lat nw) 10.0)))
+        oi-lo (dec (js/Math.round (* (.-lng nw) 10.0)))
+        oi-hi (inc (js/Math.round (* (.-lng se) 10.0)))]
     (set! (.-width canvas) tw)
     (set! (.-height canvas) th)
-    (dotimes [i (count cells)]
-      (let [c (nth cells i)
-            lat (:lat c)
-            lon (:lon c)
-            p1 (.project m (js/L.latLng (+ lat cell-half-deg) (- lon cell-half-deg)) z)
-            p2 (.project m (js/L.latLng (- lat cell-half-deg) (+ lon cell-half-deg)) z)
-            x1 (- (.-x p1) ox)
-            y1 (- (.-y p1) oy)
-            w  (js/Math.ceil (- (.-x p2) (.-x p1)))
-            h  (js/Math.ceil (- (.-y p2) (.-y p1)))]
-        ;; only draw cells whose rectangle intersects this tile
-        (when (and (< x1 tw) (> (+ x1 w) 0)
-                   (< y1 th) (> (+ y1 h) 0))
+    (doseq [li (range li-lo (inc li-hi))
+            oi (range oi-lo (inc oi-hi))]
+      (when-let [i (aget idx (str li "," oi))]
+        (let [lat (/ li 10.0)
+              lon (/ oi 10.0)
+              p1  (.project m (js/L.latLng (+ lat cell-half-deg)
+                                           (- lon cell-half-deg)) z)
+              p2  (.project m (js/L.latLng (- lat cell-half-deg)
+                                           (+ lon cell-half-deg)) z)
+              x1  (- (.-x p1) ox)
+              y1  (- (.-y p1) oy)
+              w   (js/Math.ceil (- (.-x p2) (.-x p1)))
+              h   (js/Math.ceil (- (.-y p2) (.-y p1)))]
           (set! (.-fillStyle ctx) (intensity->rgba (aget cell-ints i)))
           (.fillRect ctx x1 y1 w h))))))
 
