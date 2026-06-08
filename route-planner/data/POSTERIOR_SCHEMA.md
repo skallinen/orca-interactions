@@ -34,8 +34,19 @@ attr_adj_d  = sum_k beta_dk * (x_k - x_ref_k)   ; z / indicator-minus-ref
 attr_mult_d = exp(attr_adj_d)
 h0          = -ln(1 - base_rate_default) / ref_nm_default
 hazard_per_nm_d = h0 * RR_d * attr_mult_d
-; segment nm: lambda_seg_d = hazard_per_nm_d*nm; p=1-exp(-lambda_seg_d)
-; route: lambda_d = sum_segs; p_route_d = 1-exp(-lambda_d); pct over d.
+; lambda accumulates the EXPECTED interaction count (additive over segments):
+;   segment nm: lambda_seg_d = hazard_per_nm_d * nm
+;   route:      lambda_d     = sum_segs lambda_seg_d
+; count -> P(>=1) is the CLUSTERED aggregation (NOT naive Poisson 1-exp(-lambda),
+; which saturates long hotspot routes to ~100%). Orca interactions come from ~2
+; pods / ~15 animals and cluster by pod/day, so miles are not independent trials:
+;   lambda_eff = Lmax * (1 - exp(-lambda/Lmax))      ; effective-exposure cap
+;   p          = 1 - (1 + lambda_eff / r)^(-r)        ; negative-binomial (gamma-
+;                                                     ;   mixed Poisson) overdisp.
+; Lmax = eff-lambda-max (0.5), r = dispersion-r (0.4) are constants in
+; planner_core.cljs (see `count->prob`). p reduces to 1-exp(-lambda) as r->inf and
+; lambda<<Lmax, so short legs / open water are unchanged; long hotspot routes
+; settle to a defensible double-digit ceiling instead of certainty. pct over d.
 ```
 x_ref: ordinals at training mean (z=0), each categorical at its reference
 level, so the reference vessel has attr_mult=1.

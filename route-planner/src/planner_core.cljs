@@ -19,9 +19,13 @@
        RR = exp(f)/Z is mean ~1 over sailed waters (bounded).
 
    Absolute level is anchored by a Fermi exposure rate h0 = -ln(1-base_rate)/ref_nm
-   (hazard per nautical mile). Per-segment / per-route risk is a Poisson exposure
-   layer: lambda = sum hazard_per_nm * nm, p = 1 - exp(-lambda); percentiles over
-   draws give the 89% credible interval.
+   (hazard per nautical mile). The exposure layer accumulates lambda = sum
+   hazard_per_nm * nm, the EXPECTED interaction count (additive across segments).
+   lambda is then turned into P(>=1 interaction) by `count->prob`: a clustered
+   (negative-binomial) aggregation on an effective, saturating exposure rather than
+   the naive Poisson 1-exp(-lambda) — see that fn for why (orca interactions cluster
+   by pod/day, so miles are not independent trials and long routes must not saturate
+   to certainty). Percentiles over draws give the 89% credible interval.
 
    Daylight is carried as a documented multiplicative factor on the hazard. It is
    inherited from the blog time-of-day analysis and is orthogonal to this spatial
@@ -218,6 +222,63 @@
   [base-rate ref-nm]
   (/ (- (js/Math.log (- 1.0 base-rate))) ref-nm))
 
+;; ── Count → probability: clustered (overdispersed) aggregation ────────────────
+;;
+;; The exposure layer gives lambda = sum_seg hazard_per_nm * nm: the EXPECTED
+;; number of interactions on the route (a Poisson MEAN — additive across segments,
+;; the correct quantity to accumulate). Turning that mean into P(>=1 interaction)
+;; is where the old `1 - exp(-lambda)` went wrong: it assumes every nautical mile
+;; is an INDEPENDENT Bernoulli trial, so a long route through a hotspot drives
+;; lambda >> 1 and P saturates to ~100% — which is absurd (a single passage cannot
+;; be near-certain). Two facts about Iberian-orca interactions break the Poisson
+;; independence assumption, and each has a standard statistical correction:
+;;
+;;   1. CLUSTERING / OVERDISPERSION. Interactions come from ~2 pods / ~15 named
+;;      animals and cluster heavily by pod and by day. The textbook model for
+;;      clustered counts is the gamma-mixed Poisson = NEGATIVE BINOMIAL, for which
+;;      P(0) = (1 + lambda/r)^(-r) > exp(-lambda), so P(>=1) = 1-(1+lambda/r)^(-r)
+;;      is strictly BELOW the Poisson value and the gap widens as lambda grows
+;;      (r -> inf recovers Poisson). The dispersion r is small under strong
+;;      clustering; r = `dispersion-r` ~ 0.4 reflects the ~2-pod reality. (See e.g.
+;;      Linden & Mantyniemi 2011, Ecology; the gamma-Poisson mixture.)
+;;
+;;   2. WITHIN-ROUTE SPATIAL CORRELATION (effective encounters << miles). Sailing
+;;      more miles through one pod's daily range is the SAME encounter opportunity,
+;;      not many independent ones, so independent hazard must not accumulate without
+;;      bound. We map raw exposure to an EFFECTIVE exposure that saturates at
+;;      `eff-lambda-max` (the most independent encounter opportunities a single
+;;      passage can credibly represent): lambda_eff = Lmax*(1-exp(-lambda/Lmax)),
+;;      which is ~identity for small lambda (short legs / open water are untouched)
+;;      and -> Lmax for a very long hotspot transit (effective-sample-size cap).
+;;
+;; Net effect: short/typical passages read essentially as before (single digits),
+;; while long hotspot routes settle to a defensible double-digit ceiling instead of
+;; saturating to certainty. The transform is monotone in lambda, so per-draw
+;; percentile (CI) orderings are preserved.
+
+(def ^{:doc "Negative-binomial dispersion r (gamma-Poisson clustering). Small =>
+  strong pod/day clustering => P(>=1) pulled well below the Poisson value."}
+  dispersion-r 0.4)
+
+(def ^{:doc "Effective-exposure ceiling: the most independent expected encounters a
+  single planned passage can credibly accumulate (within-route correlation cap)."}
+  eff-lambda-max 0.5)
+
+(defn effective-lambda
+  "Saturating map from raw expected-count lambda to EFFECTIVE independent exposure:
+   Lmax*(1-exp(-lambda/Lmax)). ~identity for lambda << Lmax, -> Lmax as lambda -> inf."
+  [lambda]
+  (* eff-lambda-max (- 1.0 (js/Math.exp (- (/ lambda eff-lambda-max))))))
+
+(defn count->prob
+  "P(>=1 interaction) from an expected-count lambda under the clustered model:
+   negative-binomial on the effective exposure, 1 - (1 + lam_eff/r)^(-r). Reduces
+   to the old Poisson 1-exp(-lambda) when there is no clustering (r -> inf) and no
+   saturation (lambda << eff-lambda-max)."
+  [lambda]
+  (let [le (effective-lambda lambda)]
+    (- 1.0 (js/Math.pow (+ 1.0 (/ le dispersion-r)) (- dispersion-r)))))
+
 ;; ── Per-point fast path (drifted basis + draw-independent contribs hoisted) ───
 ;;
 ;; The hot route loop combines, for ~500 draws at each segment point, the spatial
@@ -277,7 +338,7 @@
     (summary
      (map (fn [[sdraw beta]]
             (let [lam (* (plan-hazard-draw cfg plan sdraw beta) nm)]
-              (- 1.0 (js/Math.exp (- lam)))))
+              (count->prob lam)))
           (draw-pairs cfg)))))
 
 (defn route-risk
@@ -299,7 +360,7 @@
                        (fn [acc {:keys [plan nm]}]
                          (+ acc (* (plan-hazard-draw cfg plan sdraw beta) nm)))
                        0.0 plans)]
-              (- 1.0 (js/Math.exp (- lam)))))
+              (count->prob lam)))
           (draw-pairs cfg)))))
 
 ;; ── Heatmap factoring (posterior-mean point estimate) ─────────────────────────
@@ -381,6 +442,8 @@
     (* (js/Math.exp adj) (get daylight-adj (:daylight passage) 1.0))))
 
 (defn heatmap-intensity
-  "Display intensity 1 - exp(-(scale)*RR*static-mult*dynamic-scalar) for one cell."
+  "Display intensity for one cell: P(>=1) over a reference-length exposure through
+   the cell, under the same clustered `count->prob` aggregation as the route, so the
+   field and the route stay on one consistent scale."
   [d-scalar {:keys [rr static-mult scale]}]
-  (- 1.0 (js/Math.exp (- (* scale rr static-mult d-scalar)))))
+  (count->prob (* scale rr static-mult d-scalar)))
