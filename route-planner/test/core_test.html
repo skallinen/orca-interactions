@@ -53,7 +53,7 @@
           boat    {:speed 2 :length 1
                    :sailing "Motoring" :antifoul "Black"
                    :hull "White/light" :rudder "Spade"}
-          base 0.025 ref-nm 100.0 doy 232
+          base 0.008 ref-nm 100.0 doy 232
           ;; passage carries conditions + the per-point depth/distance grid cell
           passage (fn [dep dist]
                     {:wind 1 :sea 0 :daylight "Average"
@@ -170,13 +170,17 @@
                     "count->prob ~ Poisson for tiny lambda" "p=" tiny)
         (log-result (< big pois5) "count->prob below Poisson for large lambda"
                     "nb=" big "poisson=" pois5)
-        (log-result (< huge 0.4) "count->prob capped below a credible ceiling"
+        ;; Gentle softcap (eff-lambda-max=0.15, dispersion-r=0.3) =>
+        ;; ceiling = 1-(1+0.15/0.3)^(-0.3) ~ 0.1145. Assert the saturated value
+        ;; sits just at that believable ceiling (well under any 30%-style runaway).
+        (log-result (< huge 0.13) "count->prob capped below a credible ceiling"
                     "p(huge)=" huge))
 
       ;; 9. NO ROUTE SATURATION: a deliberately pathological long passage through
       ;;    the summer Galician hotspot in a worst-case (very shallow, near-shore)
-      ;;    vessel must NOT read near-certain. The whole-route median stays well
-      ;;    below ~40% even as a typical mid-water passage stays single-digit.
+      ;;    vessel must NOT read near-certain. Under the gentle Phase-1 softcap the
+      ;;    worst-case route saturates toward the believable ~11.5% ceiling (not
+      ;;    100%), while a typical mid-water passage stays low single-digit (<3%).
       (let [worst-boat {:speed 0 :length 0 :sailing "Motoring" :antifoul "Coppercoat"
                         :hull "Dark colour" :rudder "Spade"}
             worst-pass {:wind 4 :sea 3 :daylight "Day" :depth-ord 4 :distance-ord 0}
@@ -190,10 +194,23 @@
                       {:lat 36.1 :lon -5.6 :depth-ord 2 :distance-ord 2 :nm 90.0}]
             rr-typ   (:median (c/route-risk cfg boat (passage 2 2) typ-segs
                                             232 base ref-nm))]
-        (log-result (< rr-worst 0.4) "worst-case long hotspot route not saturated"
+        (log-result (< rr-worst 0.13) "worst-case long hotspot route not saturated"
                     "median=" rr-worst)
-        (log-result (< rr-typ 0.10) "typical passage stays single-digit"
-                    "median=" rr-typ)))
+        (log-result (< rr-typ 0.03) "typical passage stays single-digit"
+                    "median=" rr-typ))
+
+      ;; 10. DEPTH IS NOT A VESSEL ATTRIBUTE: depth was removed from attr_mult as
+      ;;     a spurious location proxy double-counting the spatial field. A deep
+      ;;     vs shallow point at the SAME location/RR/conditions must give the
+      ;;     same attr contribution (identical attr_mult per draw).
+      (let [deep-contribs    (c/attr-x-ref cfg boat (passage 3 2))
+            shallow-contribs (c/attr-x-ref cfg boat (passage 0 2))
+            beta0            (first (:attr-draws cfg))
+            deep-adj         (c/attr-adj-draw deep-contribs beta0)
+            shallow-adj      (c/attr-adj-draw shallow-contribs beta0)]
+        (log-result (< (js/Math.abs (- deep-adj shallow-adj)) 1e-12)
+                    "depth does not affect attr_mult (location proxy removed)"
+                    "deep-adj=" deep-adj "shallow-adj=" shallow-adj)))
 
     (catch :default e
       (js/console.error (str "EXCEPTION during tests: " e))

@@ -401,9 +401,11 @@
 
 (defn- check-sanity-route
   "Primary sanity gate: the W-Portugal→Gibraltar route at summer doy=232 with the
-   reference/average vessel returns a median in (0.03, 0.35) and a non-degenerate
-   89% CI (hi - lo > 0.01), with no new console/page errors. The legacy build
-   returned 100% [100,100]; this asserts the rework brought it back to a sane band."
+   reference/average vessel returns a median in the recalibrated believable band
+   (0.01, 0.08) — Phase-1 anchors base_rate so this reference route reads ~2.5% —
+   and a non-degenerate 89% CI (hi - lo > 0.005), with no new console/page errors.
+   The legacy build returned 100% [100,100]; this asserts the rework + Phase-1
+   recalibration brought it back to a sane low-single-digit band."
   [{:keys [page console perrors]}]
   (let [err0 (count (filterv #(= "error" (:type %)) @console))
         perr0 (count @perrors)]
@@ -419,8 +421,8 @@
           no-new-errs? (and (= err0 (count (filterv #(= "error" (:type %))
                                                     @console)))
                             (= perr0 (count @perrors)))]
-      {:pass? (boolean (and medf (> medf 0.03) (< medf 0.35)
-                            ci-width (> ci-width 0.01) no-new-errs?))
+      {:pass? (boolean (and medf (> medf 0.01) (< medf 0.08)
+                            ci-width (> ci-width 0.005) no-new-errs?))
        :detail (str "median=" med "% CI=[" lo "," hi "]%"
                     " ci-width=" (when ci-width (format "%.3f" ci-width))
                     " new-errors=" (not no-new-errs?))})))
