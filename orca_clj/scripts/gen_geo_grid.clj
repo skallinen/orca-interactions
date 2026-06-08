@@ -1,10 +1,30 @@
 #!/usr/bin/env bb
-;; Phase 2 route-planner: build a static raster of seabed-depth and
+;; Phase 2 route-planner: build a static raster of CONTINUOUS seabed-depth and
 ;; distance-to-coast ordinal bins per 0.1 deg sea cell, emitted as JSON.
 ;;
+;; Each stored sea cell now carries:
+;;   - "m": CONTINUOUS depth in metres (+down), bilinearly sampled from the
+;;          high-res ETOPO_2022_v1_15s bathymetry. The runtime depth covariate
+;;          (b_d1*z + b_d2*z2, z = standardize(log10(max(m,1)))) reads this.
+;;   - "c": distance-to-coast ordinal (0:<=2nm 1:<=5nm 2:<=10nm 3:>10nm).
+;; The old "d" (4-bin depth ordinal) has been DROPPED: continuous "m" supersedes
+;; it, and the depth-ord beta was already excluded from the attr multiplier as a
+;; location proxy (see POSTERIOR_SCHEMA.md). The land/sea mask still uses the
+;; coarse `tmp_geo/bathy.csv` average (depth>0) so the set of stored cells is
+;; unchanged; only the per-cell depth VALUE comes from the finer ETOPO grid.
+;;
 ;; Inputs (plain text / JSON only):
-;;   - ETOPO bathymetry CSV from NOAA ERDDAP  (latitude,longitude,altitude[m, +up])
-;;   - Natural Earth coastline GeoJSON        (LineString / MultiLineString)
+;;   - tmp_geo/bathy.csv     coarse ETOPO altitude CSV (land/sea mask only)
+;;   - tmp_sim/bathy.json    high-res ETOPO_2022_v1_15s depth grid (continuous m).
+;;       Built by route-planner/tmp_sim/depth_probe.clj from five 5-deg ERDDAP
+;;       griddap bands (stride 12, ~0.05deg), concatenated over 25-50N, 20W-5E:
+;;         https://coastwatch.pfeg.noaa.gov/erddap/griddap/ETOPO_2022_v1_15s.csv?z[(25.0):12:(30.0)][(-20.0):12:(5.0)]
+;;         https://coastwatch.pfeg.noaa.gov/erddap/griddap/ETOPO_2022_v1_15s.csv?z[(30.0):12:(35.0)][(-20.0):12:(5.0)]
+;;         https://coastwatch.pfeg.noaa.gov/erddap/griddap/ETOPO_2022_v1_15s.csv?z[(35.0):12:(40.0)][(-20.0):12:(5.0)]
+;;         https://coastwatch.pfeg.noaa.gov/erddap/griddap/ETOPO_2022_v1_15s.csv?z[(40.0):12:(45.0)][(-20.0):12:(5.0)]
+;;         https://coastwatch.pfeg.noaa.gov/erddap/griddap/ETOPO_2022_v1_15s.csv?z[(45.0):12:(50.0)][(-20.0):12:(5.0)]
+;;       (z = altitude +up; depth = -z.)
+;;   - tmp_geo/ne_50m_coastline.geojson   Natural Earth coastline (distance-to-coast)
 ;; Output:
 ;;   - route-planner/geo_grid.json
 
@@ -24,22 +44,55 @@
 
 (def repo "/Users/samikallinen/common/projects/orca-interactions")
 (def bathy-csv (str repo "/tmp_geo/bathy.csv"))
+(def hires-bathy-json (str repo "/route-planner/tmp_sim/bathy.json"))
 (def coast-geojson (str repo "/tmp_geo/ne_50m_coastline.geojson"))
 (def out-path (str repo "/route-planner/geo_grid.json"))
 
 ;; ---------------------------------------------------------------------------
+;; High-res ETOPO depth grid (bilinear sampling of CONTINUOUS depth, +down m)
+;; ---------------------------------------------------------------------------
+(defn load-hires-bathy
+  "Load tmp_sim/bathy.json {:lats :lons :nlat :nlon :depth_row_major} for
+   bilinear sampling of continuous depth (m, +down; negative over land)."
+  []
+  (let [b (json/parse-string (slurp hires-bathy-json))]
+    {:lats (double-array (get b "lats"))
+     :lons (double-array (get b "lons"))
+     :nlat (long (get b "nlat"))
+     :nlon (long (get b "nlon"))
+     :z (double-array (get b "depth_row_major"))}))
+
+(defn bsearch-cell ^long [^doubles axis ^long n ^double v]
+  (let [n1 (dec n)]
+    (cond
+      (<= v (aget axis 0)) 0
+      (>= v (aget axis n1)) (dec n1)
+      :else
+      (loop [lo 0 hi n1]
+        (if (<= (- hi lo) 1)
+          lo
+          (let [mid (quot (+ lo hi) 2)]
+            (if (<= (aget axis mid) v) (recur mid hi) (recur lo mid))))))))
+
+(defn sample-depth-m
+  "Bilinear continuous depth (m, +down) at (lat,lon) from the hi-res grid."
+  ^double [{:keys [^doubles lats ^doubles lons ^long nlat ^long nlon ^doubles z]}
+           ^double lat ^double lon]
+  (let [i (bsearch-cell lats nlat lat)
+        j (bsearch-cell lons nlon lon)
+        la0 (aget lats i) la1 (aget lats (inc i))
+        lo0 (aget lons j) lo1 (aget lons (inc j))
+        ty (if (== la1 la0) 0.0 (/ (- lat la0) (- la1 la0)))
+        tx (if (== lo1 lo0) 0.0 (/ (- lon lo0) (- lo1 lo0)))
+        idx (fn ^double [^long ii ^long jj] (aget z (+ (* ii nlon) jj)))
+        z00 (idx i j) z01 (idx i (inc j))
+        z10 (idx (inc i) j) z11 (idx (inc i) (inc j))]
+    (+ (* (- 1.0 ty) (+ (* (- 1.0 tx) z00) (* tx z01)))
+       (* ty (+ (* (- 1.0 tx) z10) (* tx z11))))))
+
+;; ---------------------------------------------------------------------------
 ;; Binning
 ;; ---------------------------------------------------------------------------
-(defn depth-ord
-  "depth-ord from depth in positive metres below sea level.
-   0-20 ->0, 20-40 ->1, 40-200 ->2, >=200 ->3."
-  [depth-m]
-  (cond
-    (< depth-m 20.0)  0
-    (< depth-m 40.0)  1
-    (< depth-m 200.0) 2
-    :else             3))
-
 (defn distance-ord
   "distance-ord from distance in nautical miles.
    0-2 ->0, 2-5 ->1, 5-10 ->2, >10 ->3."
@@ -202,9 +255,10 @@
 ;; same logic running in well under a second.
 (defn build-cells
   "Walk every 0.1 deg cell, returning {:cells m :stored n :land n :nobathy n}.
-   Sea cells (depth > 0) carry {:d depth-ord :c distance-ord}; land/no-bathy
-   cells are omitted."
-  [bathy coast-grid]
+   Land/sea is masked by the coarse `bathy` average (depth>0); each stored sea
+   cell carries {:m continuous-depth-m :c distance-ord}, with `m` bilinearly
+   sampled from the hi-res ETOPO grid. Land/no-bathy cells are omitted."
+  [bathy hires coast-grid]
   (let [ilat-min (Math/round (* lat-min 10.0))
         ilat-max (Math/round (* lat-max 10.0))
         ilon-min (Math/round (* lon-min 10.0))
@@ -227,9 +281,10 @@
                             depth (- (/ s n))]   ;; positive = below sea level
                         (if (<= depth 0.0)
                           (recur (inc ilon) cells stored (inc land) nobathy)
-                          (let [best (nearest-coast-nm coast-grid lat lon coslat)]
+                          (let [best (nearest-coast-nm coast-grid lat lon coslat)
+                                m (Math/round (sample-depth-m hires lat lon))]
                             (recur (inc ilon)
-                                   (assoc! cells k {:d (depth-ord depth)
+                                   (assoc! cells k {:m m
                                                     :c (distance-ord best)})
                                    (inc stored) land nobathy))))))))]
           (recur (inc ilat) cells stored land nobathy))))))
@@ -239,11 +294,13 @@
   (let [t0 (System/currentTimeMillis)
         bathy (load-bathy)
         _ (println "  bathy cells:" (count bathy))
+        hires (load-hires-bathy)
+        _ (println "  hi-res ETOPO grid:" (:nlat hires) "x" (:nlon hires))
         coast (load-coast-vertices)
         _ (println "Loaded coastline vertices (padded bbox):" (count coast))
         coast-grid (build-coast-grid coast)
         _ (println "  coast buckets:" (count coast-grid))
-        {:keys [cells stored land nobathy]} (build-cells bathy coast-grid)]
+        {:keys [cells stored land nobathy]} (build-cells bathy hires coast-grid)]
     (println "  stored sea cells:" stored " land dropped:" land
              " no-bathy:" nobathy
              " elapsed-ms:" (- (System/currentTimeMillis) t0))

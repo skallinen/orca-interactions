@@ -99,7 +99,9 @@ the app itself and `README.md` here for the full breakdown.
 - **Artifacts:** `route-planner/posterior_planner.json` (the rebuilt
   `presence-effort-seasonal` model: 500 draws of an `attr` block plus a
   `spatial` block; schema in `route-planner/data/POSTERIOR_SCHEMA.md`),
-  `route-planner/geo_grid.json` (depth/distance ordinals for 34,933 sea cells),
+  `route-planner/geo_grid.json` (per sea cell `m` = continuous ETOPO depth in
+  metres for the depth covariate, and `c` = distance-to-coast ordinal; 34,933
+  cells; the old `d` depth-ordinal was dropped),
   and the data-prep artifacts in `route-planner/data/` (`harbor_coords.edn`,
   `planner_dataset.edn`, `effort_grid.json`, `background_sample.edn`).
 - **Sources:** `src/orca/planner_fit.clj` (`orca.planner-fit`, the two-part fit +
@@ -115,9 +117,15 @@ the app itself and `README.md` here for the full breakdown.
   (no autopilot; absent on incidents). **Part B** (`spatial.stan`,
   `tau ~ normal(0,0.4)`) is a logistic of incident locations vs
   effort-weighted background -> a bounded RBF occupancy field that drifts
-  north/south with day-of-year (ecology-fixed sinusoid). Per-draw normalization
-  makes `RR` mean ~1 over sailed waters, so it cannot saturate: a
-  W-Portugal -> Gibraltar passage reads ~20% with a real 89% CI, not 100%.
+  north/south with day-of-year (ecology-fixed sinusoid), PLUS a regularized
+  continuous log-depth covariate `b_d1*z + b_d2*z2`
+  (`z = standardize(log10(max(depth_m,1)))`, priors `N(0,0.5)`; fitted
+  `b_d1~+1.3`, `b_d2~-1.6` => a PEAKED shelf/slope preference with abyssal
+  taper). Both the RBF term (`col_means`) and the depth term (`z_bg_mean`,
+  `z2_bg_mean`) are background-centered and the per-draw `Z` normalizes the
+  COMBINED predictor. Per-draw normalization makes `RR` mean ~1 over sailed
+  waters, so it cannot saturate: a W-Portugal -> Gibraltar passage reads a
+  defensible single-digit % with a real 89% CI, not 100%.
   `h0 = -ln(1-base_rate)/ref_nm` sets the absolute level. The old
   presence/**background** smoother (uniform pseudo-absences -> runaway 100%) was
   replaced for exactly this reason; do not reintroduce it.

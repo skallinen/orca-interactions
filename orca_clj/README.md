@@ -118,8 +118,8 @@ This project produces its data artifacts and gates it:
 
 | Artifact | What it is |
 |----------|------------|
-| `route-planner/posterior_planner.json` | The `presence-effort-seasonal` model: 500 draws of an `attr` block (relative vessel effects) and a `spatial` block (occupancy field + seasonal drift). Schema in `route-planner/data/POSTERIOR_SCHEMA.md` |
-| `route-planner/geo_grid.json`          | Depth/distance ordinals for 34,933 sea cells over 25-50°N, 20°W-5°E at 0.1° |
+| `route-planner/posterior_planner.json` | The `presence-effort-seasonal` model: 500 draws of an `attr` block (relative vessel effects) and a `spatial` block (occupancy field + seasonal drift + a regularized log-depth covariate `b_d1`/`b_d2`). Schema in `route-planner/data/POSTERIOR_SCHEMA.md` |
+| `route-planner/geo_grid.json`          | Per sea cell: `m` = continuous ETOPO seafloor depth (m, +down) for the depth covariate, `c` = distance-to-coast ordinal. 34,933 cells over 25-50°N, 20°W-5°E at 0.1° (the old `d` depth-ordinal was dropped) |
 | `route-planner/data/*`                 | Data-prep artifacts: `harbor_coords.edn`, `planner_dataset.edn`, `effort_grid.json`, `background_sample.edn` |
 
 | Source | What it does |
@@ -144,8 +144,13 @@ two logistic models combined at runtime:
 - **Part B** (`spatial.stan`): incident locations vs an **effort-weighted**
   background (harbor-to-harbor sailing tracks, not uniform sea cells) -> a bounded
   RBF occupancy field whose centre drifts north/south with day-of-year
-  (ecology-fixed sinusoid, peak-north in late summer). Per-draw normalization
-  makes `RR` mean ~1 over sailed waters.
+  (ecology-fixed sinusoid, peak-north in late summer), **plus a regularized
+  continuous log-depth covariate** `b_d1*z + b_d2*z2`
+  (`z = standardize(log10(max(depth_m,1)))`, priors `N(0,0.5)`): the fit returns
+  `b_d1~+1.3`, `b_d2~-1.6`, i.e. a peaked shelf/slope preference with an abyssal
+  taper, beyond what location alone explains (ΔAIC ~ +42-54 in the prior probe).
+  Both terms are background-centered and the per-draw `Z` normalizes the combined
+  predictor, so `RR` is mean ~1 over sailed waters.
 
 This replaces the earlier presence/**background** smoother, whose uniform
 pseudo-absences produced a ~13-logit hotspot and a runaway 100% risk for any

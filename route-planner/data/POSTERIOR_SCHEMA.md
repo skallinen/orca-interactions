@@ -6,9 +6,12 @@ models combined at runtime (see ROUTE_PLANNER_PLAN.md I2.5/I2.6).
 ## Top level
 - `model`: "presence-effort-seasonal"
 - `n_draws`: 500 posterior draws.
-- `base_rate_default`: 0.008 (P of >=1 interaction over `ref_nm_default` nm at RR=1, attr_mult=1).
-  **REFERENCE-ROUTE anchored (Phase 1):** calibrated so a fixed W-Portugal->Gibraltar
+- `base_rate_default`: 0.00315 (P of >=1 interaction over `ref_nm_default` nm at RR=1, attr_mult=1).
+  **REFERENCE-ROUTE anchored:** calibrated so a fixed W-Portugal->Gibraltar
   reference passage (the smoke-test `wpg-route`, reference vessel, doy=232) reads ~2.5%.
+  RE-ANCHORED from 0.008 when the continuous-depth covariate was added on the spatial
+  side (depth sharpens the shelf/slope hotspots, raising the field, so the per-nm
+  hazard had to drop to keep the reference route at 2.5%).
   The old value (0.025) was anchored on the population MEAN over all 438 passages, but
   that population is dominated by short coastal hops (median ~51 nm), which forced the
   per-nm hazard too high for any real hotspot transit; reference-route anchoring fixes
@@ -29,21 +32,45 @@ models combined at runtime (see ROUTE_PLANNER_PLAN.md I2.5/I2.6).
 - `layout`: the 20 design columns, ordinals then one-hot "cat=level".
 - `draws`: 500 rows, each a length-20 beta vector (alpha discarded).
 
-## spatial (Part B: seasonally-drifting occupancy field)
+## spatial (Part B: seasonally-drifting occupancy field + continuous depth)
 - `metric`: haversine_km. `lengthscale_km`: 150.0.
 - `centers`: 84 RBF center [lat,lon] pairs. `n_basis`: 84.
 - `col_means`: length-84 background column means (subtract from raw basis).
 - `drift`: {a_lat, phi, a_lon, period}; mu_lat(doy)=a_lat*sin(2pi(doy-phi)/period), mu_lon=a_lon.
-- `draws`: 500 of {w: length-84, Z: per-draw normalizer, b0: fit intercept (unused at runtime)}.
+- `depth`: continuous **log-depth covariate** (regularized; replaces the old
+  `depth_ord` location-proxy). Depth_m is the ETOPO_2022_v1_15s seafloor depth
+  (metres, +down) bilinearly sampled from `tmp_sim/bathy.json`; the runtime reads
+  per-cell depth from `geo_grid.json` key `"m"`.
+  - `source`: "ETOPO_2022_v1_15s (bathy.json, +down m)".
+  - `logdepth_mean`, `logdepth_sd`: standardizers for z=(log10(max(depth_m,1)) -
+    logdepth_mean)/logdepth_sd, computed over the COMBINED 216 presences + 3000
+    background (same convention as the attr ordinals). (~2.129 / ~0.998.)
+  - `z_bg_mean`, `z2_bg_mean`: BACKGROUND means of z and z^2 (~ -0.003 / ~1.050),
+    the depth-side analogue of `col_means` — subtract so the depth term is
+    background-centered (mean ~0 over sailed waters).
+  - The shape is **PEAKED** (shelf/slope preference with abyssal taper): the
+    fitted coefficients are b_d1 ~ +1.32 (SD 0.16), b_d2 ~ -1.61 (SD 0.17), each
+    under a regularizing Normal(0,0.5) prior. b_d2 < 0 => quadratic peak.
+- `draws`: 500 of {w: length-84, Z: per-draw normalizer (now INCLUDES the
+  centered depth term), b0: fit intercept (unused at runtime), b_d1, b_d2:
+  per-draw depth coefficients}.
 
 ## Runtime combine (per draw d, point (lat,lon), day doy, vessel x)
 ```
 lat' = lat - a_lat*sin(2pi(doy-phi)/period); lon' = lon - a_lon
 B_j  = exp(-haversine_km((lat',lon'),center_j)^2 / (2*lengthscale_km^2))
-f_d  = sum_j w_dj * (B_j - col_means_j)
+f_rbf_d = sum_j w_dj * (B_j - col_means_j)
+; --- continuous-depth term (read depth_m from geo_grid cell key "m") ---
+z       = (log10(max(depth_m, 1)) - logdepth_mean) / logdepth_sd
+z2      = z*z
+f_dep_d = b_d1_d * (z  - z_bg_mean) + b_d2_d * (z2 - z2_bg_mean)
+f_d     = f_rbf_d + f_dep_d
 RR_d = exp(f_d) / Z_d           ; mean 1 over sailed waters => bounded
+;   Z_d = mean over the effort-weighted background of exp(f_rbf_d + f_dep_d),
+;   so BOTH the RBF and depth terms are normalized; RR_d has mean exactly 1
+;   over the sailed background per draw (verified: 1.00000).
 attr_adj_d  = sum_k beta_dk * (x_k - x_ref_k)   ; z / indicator-minus-ref
-                                                ; (depth_ord EXCLUDED: location proxy)
+                                                ; (depth_ord EXCLUDED: now on spatial side)
 attr_mult_d = exp(attr_adj_d)
 h0          = -ln(1 - base_rate_default) / ref_nm_default
 hazard_per_nm_d = h0 * RR_d * attr_mult_d
@@ -62,8 +89,9 @@ hazard_per_nm_d = h0 * RR_d * attr_mult_d
 ; so no route runs away toward the old ~30%. p reduces to 1-exp(-lambda) as r->inf
 ; and lambda<<Lmax, so short legs / open water are unchanged; long hotspot routes
 ; settle to a defensible single-digit/low-double-digit value instead of certainty.
-; pct over d. Reference profile under Phase-1 calibration: short hop <1%,
-; W-Port->Gib ~2.5%, ~900nm circumnavigation ~6%, 438-passage p95 ~2.6%, max ~7%.
+; pct over d. Reference profile under the depth-aware calibration (base_rate
+; 0.00315): short hop ~0.2%, W-Port->Gib ~2.5%, long circumnavigation ~6.2%
+; (> WPG), 438-passage p50 ~0.2% / p95 ~1.3% / max ~4.1%.
 ```
 x_ref: ordinals at training mean (z=0), each categorical at its reference
 level, so the reference vessel has attr_mult=1.
