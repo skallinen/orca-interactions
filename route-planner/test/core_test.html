@@ -53,12 +53,13 @@
           boat    {:speed 2 :length 1
                    :sailing "Motoring" :antifoul "Black"
                    :hull "White/light" :rudder "Spade"}
-          base 0.008 ref-nm 100.0 doy 232
-          ;; passage carries conditions + the per-point depth/distance grid cell
-          passage (fn [dep dist]
+          base 0.00315 ref-nm 100.0 doy 232
+          ;; passage carries conditions + the per-point CONTINUOUS depth (metres,
+          ;; +down) and distance-from-coast ordinal of the grid cell.
+          passage (fn [depth-m dist]
                     {:wind 1 :sea 0 :daylight "Average"
-                     :depth-ord dep :distance-ord dist})
-          pass2 (passage 2 2)
+                     :depth-m depth-m :distance-ord dist})
+          pass2 (passage 200 2)
           ;; a point for the Poisson identity
           lat 36.0 lon -8.0]
 
@@ -81,9 +82,9 @@
       ;; 2. CI ORDERING for segment-risk and route-risk (lo < med < hi).
       (let [sr (c/segment-risk cfg 37.0 -9.0 doy boat (passage 1 3) 75.0 base
                                ref-nm)
-            segs [{:lat 37.0 :lon -9.0 :depth-ord 1 :distance-ord 3 :nm 75.0}
-                  {:lat 36.2 :lon -6.1 :depth-ord 2 :distance-ord 1 :nm 120.0}]
-            rr (c/route-risk cfg boat (passage 1 3) segs doy base ref-nm)]
+            segs [{:lat 37.0 :lon -9.0 :depth-m 150 :distance-ord 3 :nm 75.0}
+                  {:lat 36.2 :lon -6.1 :depth-m 600 :distance-ord 1 :nm 120.0}]
+            rr (c/route-risk cfg boat (passage 150 3) segs doy base ref-nm)]
         (log-result (and (< (:lo89 sr) (:median sr)) (< (:median sr) (:hi89 sr)))
                     "segment-risk CI ordering"
                     "lo=" (:lo89 sr) "med=" (:median sr) "hi=" (:hi89 sr))
@@ -94,14 +95,14 @@
       ;; 3. MONOTONE exposure: segment median increases with nm; route median
       ;;    increases when appending a segment.
       (let [pt 37.0 pn -9.0
-            med (fn [nm] (:median (c/segment-risk cfg pt pn doy boat (passage 1 2)
+            med (fn [nm] (:median (c/segment-risk cfg pt pn doy boat (passage 150 2)
                                                   nm base ref-nm)))
             m25 (med 25.0) m50 (med 50.0) m100 (med 100.0) m200 (med 200.0)
-            seg1 [{:lat pt :lon pn :depth-ord 1 :distance-ord 2 :nm 80.0}]
-            seg2 (conj seg1 {:lat 36.2 :lon -6.1 :depth-ord 2 :distance-ord 1
+            seg1 [{:lat pt :lon pn :depth-m 150 :distance-ord 2 :nm 80.0}]
+            seg2 (conj seg1 {:lat 36.2 :lon -6.1 :depth-m 600 :distance-ord 1
                              :nm 90.0})
-            r1 (:median (c/route-risk cfg boat (passage 1 2) seg1 doy base ref-nm))
-            r2 (:median (c/route-risk cfg boat (passage 1 2) seg2 doy base ref-nm))]
+            r1 (:median (c/route-risk cfg boat (passage 150 2) seg1 doy base ref-nm))
+            r2 (:median (c/route-risk cfg boat (passage 150 2) seg2 doy base ref-nm))]
         (log-result (and (< m25 m50) (< m50 m100) (< m100 m200))
                     "segment monotone in nm"
                     "25=" m25 "50=" m50 "100=" m100 "200=" m200)
@@ -109,10 +110,10 @@
                     "1seg=" r1 "2seg=" r2))
 
       ;; 4. SPATIAL effect: a hotspot strictly higher than the open ocean,
-      ;;    identical params/depth/distance (compare RR medians directly).
+      ;;    identical depth (nil => RBF-only, so this isolates the RBF field).
       (let [rr-med (fn [la lo dy]
                      (let [b (c/spatial-basis cfg la lo dy)
-                           rs (mapv #(c/rr-draw cfg % b) (:spatial-draws cfg))]
+                           rs (mapv #(c/rr-draw cfg % b nil) (:spatial-draws cfg))]
                        (c/percentile (vec (sort rs)) 0.50)))
             ;; summer Galician hotspot vs deep open Atlantic
             hot (rr-med 44.0 -9.5 232)
@@ -120,24 +121,29 @@
         (log-result (> hot atl) "spatial hotspot > open ocean"
                     "hotspot=" hot "open-ocean=" atl))
 
-      ;; 5. BOUNDED: the RR field has a finite maximum over the grid (it does NOT
-      ;;    run away). Sample RR widely; the max stays modest (well under ~50).
+      ;; 5. BOUNDED: the FULL RR field (RBF + continuous depth at the ecologically
+      ;;    favoured ~200 m shelf/slope depth) has a finite maximum over the grid
+      ;;    (it does NOT run away). The depth covariate SHARPENS the hotspots, so
+      ;;    the max RR rises vs the RBF-only field; the bound is bumped to 80 to
+      ;;    accommodate that, but it must still be finite/modest (not a runaway).
       (let [rr-med (fn [la lo]
-                     (let [b (c/spatial-basis cfg la lo doy)
-                           rs (mapv #(c/rr-draw cfg % b) (:spatial-draws cfg))]
+                     (let [b  (c/spatial-basis cfg la lo doy)
+                           dz (c/depth-z cfg 200)
+                           rs (mapv #(c/rr-draw cfg % b dz) (:spatial-draws cfg))]
                        (c/percentile (vec (sort rs)) 0.50)))
             samples (for [la (range 28 49 2) lo (range -19 1 2)]
                       (rr-med la lo))
             mx (reduce max 0.0 samples)]
-        (log-result (< mx 50.0) "spatial field bounded (finite max)"
+        (log-result (< mx 80.0) "spatial field bounded (finite max)"
                     "max-RR=" mx))
 
       ;; 6. SEASONAL: a Gibraltar point's RR is higher in winter (doy 50) than
       ;;    summer (doy 232); a Galician point is the reverse (the hotspot moves
-      ;;    north as the pod follows the tuna).
+      ;;    north as the pod follows the tuna). RBF-only (nil depth) isolates the
+      ;;    seasonal drift.
       (let [rr-med (fn [la lo dy]
                      (let [b (c/spatial-basis cfg la lo dy)
-                           rs (mapv #(c/rr-draw cfg % b) (:spatial-draws cfg))]
+                           rs (mapv #(c/rr-draw cfg % b nil) (:spatial-draws cfg))]
                        (c/percentile (vec (sort rs)) 0.50)))
             gib-w (rr-med 36.0 -5.5 50)
             gib-s (rr-med 36.0 -5.5 232)
@@ -177,40 +183,78 @@
                     "p(huge)=" huge))
 
       ;; 9. NO ROUTE SATURATION: a deliberately pathological long passage through
-      ;;    the summer Galician hotspot in a worst-case (very shallow, near-shore)
-      ;;    vessel must NOT read near-certain. Under the gentle Phase-1 softcap the
-      ;;    worst-case route saturates toward the believable ~11.5% ceiling (not
-      ;;    100%), while a typical mid-water passage stays low single-digit (<3%).
+      ;;    the summer Galician hotspot at the favoured shelf/slope depth in a
+      ;;    worst-case vessel must NOT read near-certain. Under the gentle softcap
+      ;;    the worst-case route saturates toward the believable ~11.5% ceiling
+      ;;    (not 100%), while a typical shelf passage stays low single-digit. NOTE:
+      ;;    the typical bound is <0.05 (was <0.03): the continuous-depth covariate
+      ;;    LEGITIMATELY raises shelf/upper-slope transits (the orca-favoured
+      ;;    depth), so a 180 nm summer Gibraltar-approach passage now reads ~3.6%
+      ;;    — comparable to the W-Port->Gib reference (2.5%, a longer route), and
+      ;;    still nowhere near saturation.
       (let [worst-boat {:speed 0 :length 0 :sailing "Motoring" :antifoul "Coppercoat"
                         :hull "Dark colour" :rudder "Spade"}
-            worst-pass {:wind 4 :sea 3 :daylight "Day" :depth-ord 4 :distance-ord 0}
+            ;; shelf/upper-slope depth (~150 m) = the depth-term PEAK, worst case.
+            worst-pass {:wind 4 :sea 3 :daylight "Day" :depth-m 150 :distance-ord 0}
             long-segs  (mapv (fn [i]
                                {:lat (+ 43.0 (* 0.2 i)) :lon -10.0
-                                :depth-ord 4 :distance-ord 0 :nm 80.0})
+                                :depth-m 150 :distance-ord 0 :nm 80.0})
                              (range 12))   ;; ~960 nm through the hotspot
             rr-worst (:median (c/route-risk cfg worst-boat worst-pass long-segs
                                             232 base ref-nm))
-            typ-segs [{:lat 36.6 :lon -7.0 :depth-ord 2 :distance-ord 2 :nm 90.0}
-                      {:lat 36.1 :lon -5.6 :depth-ord 2 :distance-ord 2 :nm 90.0}]
-            rr-typ   (:median (c/route-risk cfg boat (passage 2 2) typ-segs
+            typ-segs [{:lat 36.6 :lon -7.0 :depth-m 500 :distance-ord 2 :nm 90.0}
+                      {:lat 36.1 :lon -5.6 :depth-m 500 :distance-ord 2 :nm 90.0}]
+            rr-typ   (:median (c/route-risk cfg boat (passage 500 2) typ-segs
                                             232 base ref-nm))]
         (log-result (< rr-worst 0.13) "worst-case long hotspot route not saturated"
                     "median=" rr-worst)
-        (log-result (< rr-typ 0.03) "typical passage stays single-digit"
+        (log-result (< rr-typ 0.05) "typical passage stays single-digit"
                     "median=" rr-typ))
 
-      ;; 10. DEPTH IS NOT A VESSEL ATTRIBUTE: depth was removed from attr_mult as
-      ;;     a spurious location proxy double-counting the spatial field. A deep
-      ;;     vs shallow point at the SAME location/RR/conditions must give the
-      ;;     same attr contribution (identical attr_mult per draw).
-      (let [deep-contribs    (c/attr-x-ref cfg boat (passage 3 2))
-            shallow-contribs (c/attr-x-ref cfg boat (passage 0 2))
+      ;; 10a. DEPTH IS NOT A VESSEL ATTRIBUTE: the depth ordinal was removed from
+      ;;      attr_mult (a spurious location proxy double-counting the spatial
+      ;;      field). attr-x-ref no longer reads depth, so two passages that differ
+      ;;      ONLY in depth give identical attr contributions per draw.
+      (let [deep-contribs    (c/attr-x-ref cfg boat (passage 4000 2))
+            shallow-contribs (c/attr-x-ref cfg boat (passage 150 2))
             beta0            (first (:attr-draws cfg))
             deep-adj         (c/attr-adj-draw deep-contribs beta0)
             shallow-adj      (c/attr-adj-draw shallow-contribs beta0)]
         (log-result (< (js/Math.abs (- deep-adj shallow-adj)) 1e-12)
                     "depth does not affect attr_mult (location proxy removed)"
-                    "deep-adj=" deep-adj "shallow-adj=" shallow-adj)))
+                    "deep-adj=" deep-adj "shallow-adj=" shallow-adj))
+
+      ;; 10b. DEPTH MOVES RR THE ECOLOGICALLY-CORRECT WAY (peaked, both tails
+      ;;      suppressed). b_d1>0, b_d2<0 => a quadratic peak in standardized
+      ;;      log-depth around the shelf/upper slope (~200-300 m). At the SAME
+      ;;      lat/lon/doy and identical RBF basis, the spatial RR with a
+      ;;      shelf/upper-slope depth (~200 m) must be HIGHER than at abyssal depth
+      ;;      (~4000 m) AND higher than at a very-shallow nearshore depth (~15 m);
+      ;;      and a deep-abyssal extreme (~5500 m) sits BELOW the depth-neutral
+      ;;      (RBF-only) value. (Background centering keeps mid-deep ~1, so the
+      ;;      below-neutral suppression test uses the far abyssal tail.)
+      (let [la 43.0 lo -9.5 dy 232          ;; Galician shelf/slope in summer
+            b      (c/spatial-basis cfg la lo dy)
+            rr-med (fn [dz]
+                     (let [rs (mapv #(c/rr-draw cfg % b dz) (:spatial-draws cfg))]
+                       (c/percentile (vec (sort rs)) 0.50)))
+            rr-shelf  (rr-med (c/depth-z cfg 200))    ;; favoured shelf/upper slope
+            rr-abyss  (rr-med (c/depth-z cfg 4000))   ;; abyssal plain
+            rr-shallow (rr-med (c/depth-z cfg 15))    ;; very shallow nearshore
+            rr-deep   (rr-med (c/depth-z cfg 5500))   ;; far abyssal tail
+            rr-neutral (rr-med nil)]                  ;; depth-neutral (RBF only)
+        (log-result (> rr-shelf rr-abyss)
+                    "depth peaked: shelf/slope RR > abyssal RR (same loc/doy)"
+                    "shelf(200m)=" rr-shelf "abyssal(4000m)=" rr-abyss)
+        (log-result (> rr-shelf rr-shallow)
+                    "depth peaked: shelf/slope RR > very-shallow RR"
+                    "shelf(200m)=" rr-shelf "shallow(15m)=" rr-shallow)
+        (log-result (< rr-deep rr-neutral)
+                    "depth suppresses very deep water (far abyssal < depth-neutral)"
+                    "deep(5500m)=" rr-deep "no-depth=" rr-neutral)
+        (log-result (> rr-shelf rr-neutral)
+                    "depth lifts favoured shelf depth above depth-neutral"
+                    "shelf(200m)=" rr-shelf "no-depth=" rr-neutral)))
 
     (catch :default e
       (js/console.error (str "EXCEPTION during tests: " e))
