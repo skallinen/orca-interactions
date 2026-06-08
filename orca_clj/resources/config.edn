@@ -47,6 +47,11 @@
  ;; Posterior-comparison tolerances for orca.validate/validate-posterior.
  :validate {:abs-tol 0.1 :rel-tol 0.2}
 
+ ;; Route-planner RBF spatial smooth (orca.planner-fit). A regular grid of RBF
+ ;; centers over the orca zone bbox at :spacing degrees, pruned to centers near
+ ;; incidents; haversine-km basis. See ROUTE_PLANNER_PLAN.md Phase 1.
+ :rbf {:bbox {:lat-min 25 :lat-max 50 :lon-min -20 :lon-max 5} :spacing 2.5}
+
  ;; Cruising Association orca-survey API (orca.fetch). This is a documented JSON
  ;; API, not a scraped site — every record comes from an endpoint below.
  :api
