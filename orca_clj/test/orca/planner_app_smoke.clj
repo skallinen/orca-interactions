@@ -127,6 +127,33 @@
 
 (defn- settle [page] (.waitForTimeout page 350))
 
+;; ── I2.3 check: risk field still painted at low zoom ──────────────────────────
+;;
+;; The old Leaflet.heat layer (a point-density renderer with a screen-pixel blob
+;; radius) faded out as you zoomed out. The new GridLayer rasterizes the field in
+;; geographic space, so it must stay painted at low zoom. Zoom out via the
+;; window.__planner.setZoom hook, wait for tiles, and re-read the heat canvases.
+
+(defn- check-low-zoom-field
+  "Zoom out to z=3 and assert the live-risk field canvas still has painted pixels
+   (the GridLayer renders correctly at low zoom), with no new console/page errors."
+  [{:keys [page console perrors]}]
+  (let [err0  (count (filterv #(= "error" (:type %)) @console))
+        perr0 (count @perrors)
+        z     (num-of (p-eval page "() => window.__planner.setZoom(3)"))]
+    ;; tiles redraw asynchronously after a zoom; give them time to paint.
+    (.waitForTimeout page 1200)
+    (let [{:keys [pass? detail]} (check-heat-canvas {:page page})
+          no-new-errs? (and (= err0 (count (filterv #(= "error" (:type %))
+                                                    @console)))
+                            (= perr0 (count @perrors)))]
+      ;; restore a usable zoom for any later checks
+      (p-eval page "() => window.__planner.setZoom(5)")
+      (.waitForTimeout page 600)
+      {:pass? (boolean (and pass? no-new-errs?))
+       :detail (str "zoom=" z " field-" detail
+                    " new-errors=" (not no-new-errs?))})))
+
 (defn- check-add-waypoint
   [{:keys [page]}]
   (p-eval page "() => window.__planner.clearRoute()")
@@ -416,7 +443,8 @@
    {:label "#9 add second route via #add-route-btn" :check-fn check-add-route}
    {:label "#10 parity vs calculator (<1% rel)" :check-fn check-parity}
    {:label "I2.2 delete + move (delete-readd + drag changes risk)"
-    :check-fn check-edit-delete-move}])
+    :check-fn check-edit-delete-move}
+   {:label "I2.3 low-zoom field painted" :check-fn check-low-zoom-field}])
 
 (defn run
   "Run the route-planner app shell headless checks. Returns a result map;

@@ -60,6 +60,10 @@
 ;; Precomputed per-cell statics {:lat :lon :S}; S never changes on param edits.
 (defonce static-cells (atom []))
 
+;; Current per-cell intensities, recomputed (cheap) on every re-tint and read by
+;; the GridLayer's createTile painter. A flat JS array parallel to static-cells.
+(defonce cell-intensities (atom #js []))
+
 ;; ── Route-drawing state (Phase 6) ────────────────────────────────────────────
 
 ;; Leaflet object handles for the active route's waypoint markers and the
@@ -166,11 +170,6 @@
   "Warm yellow→orange→red ramp for the historical-incident heatmap."
   #js {"0.4" "#ffd166" "0.7" "#ff9f1c" "1.0" "#e63946"})
 
-(def ^:private risk-gradient
-  "Green→yellow→red ramp for the live model-risk heatmap."
-  #js {"0.0" "transparent" "0.2" "#2dc653" "0.5" "#ffd166"
-       "0.8" "#e63946" "1.0" "#e63946"})
-
 (defn- parse-cell-key
   "Recover the cell centre [lat lon] from a \"LI,OI\" grid key (lat=LI/10)."
   [k]
@@ -195,35 +194,131 @@
     (reset! static-cells (persistent! out))
     (count @static-cells)))
 
-(defn- risk-heat-data
-  "Build the [[lat lon intensity] …] JS array for the live-risk layer from the
-   precomputed statics plus a freshly-computed dynamic scalar D."
-  [cfg md]
-  (let [d   (core/dynamic-scalar cfg md @boat-params @passage-params)
-        day (:daylight @passage-params)]
-    (->> @static-cells
-         (mapv (fn [{:keys [lat lon S]}]
-                 #js [lat lon (core/heatmap-intensity d S day)]))
-         (apply array))))
+;; ── Live-risk field renderer: a custom Canvas L.GridLayer (I2.3) ──────────────
+;;
+;; The risk field is a continuous scalar sampled on the ~0.3° sub-sampled lattice.
+;; Drawing it with Leaflet.heat (a point-density renderer) produced moiré stripes,
+;; an all-green wash (per-frame max-normalization) and disappearance at low zoom.
+;; Instead we paint it as a real raster: an L.GridLayer whose createTile returns a
+;; <canvas> and fills each cell as a rectangle coloured through a FIXED green→
+;; yellow→red ramp, so a hotspot is always red and quiet water always green at any
+;; zoom, with no stripes.
+
+;; Each sub-sampled cell spans 0.3° (every 3rd 0.1° grid cell), so paint a
+;; 0.3°×0.3° rectangle centred on the cell so the field tiles seamlessly.
+(def ^:private cell-deg 0.3)
+(def ^:private cell-half-deg (/ cell-deg 2.0))
+
+;; FIXED display domain for the colour ramp (intensity = sigmoid(D+S)·daylight).
+;; Quiet offshore water sits ≈0.02–0.05 and hotspots reach ≈0.15+, so we clamp the
+;; intensity to [risk-lo, risk-hi] and map it across the full green→yellow→red ramp.
+;; This is a fixed domain (NOT per-frame normalized) so the field reads as a field.
+(def ^:private risk-lo 0.02)
+(def ^:private risk-hi 0.16)
+(def ^:private field-alpha 0.55)
+
+(defn- lerp [a b t] (+ a (* (- b a) t)))
+
+(defn- ramp-rgb
+  "Map a normalized t∈[0,1] across green→yellow→red, returning [r g b] ints."
+  [t]
+  (if (< t 0.5)
+    ;; green (45,198,83) → yellow (255,209,102)
+    (let [u (/ t 0.5)]
+      [(js/Math.round (lerp 45.0 255.0 u))
+       (js/Math.round (lerp 198.0 209.0 u))
+       (js/Math.round (lerp 83.0 102.0 u))])
+    ;; yellow (255,209,102) → red (230,57,70)
+    (let [u (/ (- t 0.5) 0.5)]
+      [(js/Math.round (lerp 255.0 230.0 u))
+       (js/Math.round (lerp 209.0 57.0 u))
+       (js/Math.round (lerp 102.0 70.0 u))])))
+
+(defn- intensity->rgba
+  "CSS rgba() fill string for a raw intensity on the fixed [risk-lo,risk-hi] domain."
+  [intensity]
+  (let [t (-> (/ (- intensity risk-lo) (- risk-hi risk-lo))
+              (max 0.0) (min 1.0))
+        [r g b] (ramp-rgb t)]
+    (str "rgba(" r "," g "," b "," field-alpha ")")))
+
+(defn- recompute-cell-intensities!
+  "Recompute the per-cell intensity array from the precomputed statics plus a
+   freshly-computed dynamic scalar D. Cheap: S is NEVER recomputed here — only D
+   (one scalar) and one sigmoid per cell (§2.5)."
+  []
+  (when (and @posterior-data (seq @static-cells))
+    (let [cfg (core/derive-config @posterior-data)
+          md  (core/mean-draw (:draws @posterior-data))
+          d   (core/dynamic-scalar cfg md @boat-params @passage-params)
+          day (:daylight @passage-params)
+          out (js/Array. (count @static-cells))]
+      (reduce (fn [i {:keys [S]}]
+                (aset out i (core/heatmap-intensity d S day))
+                (inc i))
+              0 @static-cells)
+      (reset! cell-intensities out))))
 
 (defn refresh-risk-heat!
-  "Recompute D and rebuild the live-risk heat layer's data array in place.
-   Cheap: S is never recomputed (later phases call this on param change)."
+  "Recompute D + per-cell intensities (S never recomputed) and redraw the field
+   GridLayer's tiles in place. Later phases call this on param change."
   []
+  (recompute-cell-intensities!)
   (when-let [layer @risk-heat-layer]
-    (let [cfg (core/derive-config @posterior-data)
-          md  (core/mean-draw (:draws @posterior-data))]
-      (.setLatLngs layer (risk-heat-data cfg md)))))
+    (.redraw layer)))
+
+(defn- paint-risk-tile!
+  "Paint the sub-sampled risk cells onto one map tile's canvas. `coords` carries
+   the tile's z/x/y; we ask the map to project each cell's lat/lon corners to
+   layer pixels, subtract the tile's pixel origin, and fill the rectangle."
+  [m canvas coords]
+  ;; Leaflet's default tile size is 256 px square (we don't override it), so the
+  ;; CRS pixel square covered by tile (x,y) at zoom z is [x*256,(x+1)*256] ×
+  ;; [y*256,(y+1)*256].
+  (let [ctx  (.getContext canvas "2d")
+        z    (.-z coords)
+        tw   256
+        th   256
+        ox   (* (.-x coords) tw)
+        oy   (* (.-y coords) th)
+        cells @static-cells
+        cell-ints @cell-intensities]
+    (set! (.-width canvas) tw)
+    (set! (.-height canvas) th)
+    (dotimes [i (count cells)]
+      (let [c (nth cells i)
+            lat (:lat c)
+            lon (:lon c)
+            p1 (.project m (js/L.latLng (+ lat cell-half-deg) (- lon cell-half-deg)) z)
+            p2 (.project m (js/L.latLng (- lat cell-half-deg) (+ lon cell-half-deg)) z)
+            x1 (- (.-x p1) ox)
+            y1 (- (.-y p1) oy)
+            w  (js/Math.ceil (- (.-x p2) (.-x p1)))
+            h  (js/Math.ceil (- (.-y p2) (.-y p1)))]
+        ;; only draw cells whose rectangle intersects this tile
+        (when (and (< x1 tw) (> (+ x1 w) 0)
+                   (< y1 th) (> (+ y1 h) 0))
+          (set! (.-fillStyle ctx) (intensity->rgba (aget cell-ints i)))
+          (.fillRect ctx x1 y1 w h))))))
+
+(defn- make-risk-field-layer
+  "A custom Canvas L.GridLayer that rasterizes the risk field per map tile."
+  [m]
+  ;; createTile uses the `m` captured in this closure rather than the GridLayer's
+  ;; own `this._map` — Scittle's SCI build does not provide `this-as`, and the map
+  ;; is the same instance the layer is added to.
+  (let [klass (.extend js/L.GridLayer
+                       #js {:createTile
+                            (fn [coords]
+                              (let [canvas (.createElement js/document "canvas")]
+                                (paint-risk-tile! m canvas coords)
+                                canvas))})]
+    (new klass #js {:opacity 1.0 :pane "overlayPane"})))
 
 (defn- make-incident-heat-layer []
   (js/L.heatLayer
     (apply array (mapv (fn [[lat lon]] #js [lat lon 1.0]) @incidents))
     #js {:radius 18 :blur 22 :max 1.0 :gradient incident-gradient}))
-
-(defn- make-risk-heat-layer [cfg md]
-  (js/L.heatLayer
-    (risk-heat-data cfg md)
-    #js {:radius 16 :blur 18 :max 1.0 :gradient risk-gradient}))
 
 (defn- make-incident-points-layer []
   (let [grp (js/L.layerGroup)]
@@ -268,8 +363,9 @@
       (reset! map-ref m)
       (let [n (build-static-cells! cfg md @geo-grid)]
         (js/console.log (str "orca planner: precomputed " n " static cells")))
+      (recompute-cell-intensities!)
       (reset! incident-heat-layer (make-incident-heat-layer))
-      (reset! risk-heat-layer (make-risk-heat-layer cfg md))
+      (reset! risk-heat-layer (make-risk-field-layer m))
       (reset! incident-points-layer (make-incident-points-layer))
       (reset! map-ready? true)
       ;; Apply default visibility (incident-heat on, risk-heat on, points off).
@@ -625,7 +721,12 @@
              :addRoute       (fn [] (add-route!))
              :routeCount     (fn [] (count @routes))
              :selectRoute    (fn [i] (select-route! i)
-                               @active-route)}))
+                               @active-route)
+             ;; :animate false so the zoom applies synchronously — the test reads
+             ;; getZoom right after and needs the new value, not a deferred one.
+             :setZoom        (fn [z] (when-let [m @map-ref]
+                                       (.setZoom m z #js {:animate false}))
+                               (when @map-ref (.getZoom @map-ref)))}))
 
 ;; ── View ─────────────────────────────────────────────────────────────────────
 
