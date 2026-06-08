@@ -499,6 +499,15 @@
      :detail (str "layer-opacity=" opacity " #risk-opacity present=" has-slider?
                   " new-errors=" (not no-new-errs?))}))
 
+(defn- check-render-resolution
+  "The risk field renders on a 0.2 deg lattice with coastal-land fill, so the
+   static-cell count is well above the old 0.3 deg sea-only sub-sample (~3800)
+   and below the full 0.1 deg grid (34933)."
+  [{:keys [page]}]
+  (let [n (num-of (p-eval page "() => window.__planner.staticCellCount()"))]
+    {:pass? (boolean (and n (> n 6000) (< n 34933)))
+     :detail (str "static-cells=" n)}))
+
 (def checks
   [{:label "no console/page errors" :check-fn check-no-errors}
    {:label "#status-loaded contains Ready" :check-fn check-status-loaded}
@@ -518,6 +527,8 @@
     :check-fn check-incident-window}
    {:label "#14 risk-heatmap opacity slider drives the layer"
     :check-fn check-risk-opacity}
+   {:label "#15 risk field renders on finer lattice w/ coastal fill"
+    :check-fn check-render-resolution}
    {:label "I2.2 delete + move (delete-readd + drag changes risk)"
     :check-fn check-edit-delete-move}
    {:label "I2.3 low-zoom field painted" :check-fn check-low-zoom-field}])

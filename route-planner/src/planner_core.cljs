@@ -56,12 +56,12 @@
    one-hot categorical columns named \"cat=level\"."
   [layout]
   (reduce
-    (fn [acc [i nm]]
-      (if-let [[_ catg lvl] (re-matches #"([a-z]+)=(.+)" nm)]
-        (assoc-in acc [(keyword catg) lvl] i)
-        acc))
-    {}
-    (map-indexed vector layout)))
+   (fn [acc [i nm]]
+     (if-let [[_ catg lvl] (re-matches #"([a-z]+)=(.+)" nm)]
+       (assoc-in acc [(keyword catg) lvl] i)
+       acc))
+   {}
+   (map-indexed vector layout)))
 
 (defn ordinal-index
   "Column index of an ordinal in the attr :layout (ordinals come first)."
@@ -146,6 +146,28 @@
   [cfg sdraw basis]
   (/ (js/Math.exp (f-draw cfg (:w sdraw) basis)) (:Z sdraw)))
 
+;; ── Support taper ────────────────────────────────────────────────────────────
+;;
+;; The RBF occupancy field reverts to a NON-zero constant (-sum w_j*col_mean_j)
+;; far from every center, so the deep open Atlantic and the Mediterranean — where
+;; there are no incidents and no sailing effort — float up to a misleading
+;; "neutral" RR (~0.38) instead of ~0. We gate the field by support: coverage =
+;; sum_j B_j (the un-weighted RBF sum) is high near data and ->0 in the void, so a
+;; taper 1 - exp(-coverage/cov-scale) fades the used/shown RR to ~0 where the model
+;; has no support, without touching the well-sailed waters (coverage > ~1.5 there).
+
+(def ^:private cov-scale 0.45)
+
+(defn coverage
+  "Un-weighted RBF support sum_j B_j for an already-computed basis vector."
+  [basis]
+  (reduce + 0.0 basis))
+
+(defn support-mask
+  "Taper in [0,1]: ~1 where the occupancy model has RBF support, ->0 in the void."
+  [basis]
+  (- 1.0 (js/Math.exp (- (/ (coverage basis) cov-scale)))))
+
 ;; ── Attribute multiplier ─────────────────────────────────────────────────────
 
 (defn attr-x-ref
@@ -173,15 +195,15 @@
                    :rudder (:rudder boat)}
         cat-contribs
         (reduce
-          (fn [acc [catg lvl]]
-            (let [jk (get cat-key->json catg)]
-              (if (= lvl (get ref jk))
-                acc                                       ;; reference => 0
-                (if-let [col (get-in ci [jk lvl])]
-                  (assoc acc col 1.0)
-                  acc))))                                 ;; unknown level => 0
-          {}
-          cat-pairs)]
+         (fn [acc [catg lvl]]
+           (let [jk (get cat-key->json catg)]
+             (if (= lvl (get ref jk))
+               acc                                       ;; reference => 0
+               (if-let [col (get-in ci [jk lvl])]
+                 (assoc acc col 1.0)
+                 acc))))                                 ;; unknown level => 0
+         {}
+         cat-pairs)]
     (merge ord-contribs cat-contribs)))
 
 (defn attr-adj-draw
@@ -209,18 +231,21 @@
    the drifted spatial basis, the per-draw column contribution map for attr, the
    hazard scalar h0, and the daylight factor. Consumed by `plan-hazard-draw`."
   [cfg lat lon doy boat passage base-rate ref-nm]
-  {:basis    (spatial-basis cfg lat lon doy)
-   :contribs (attr-x-ref cfg boat passage)
-   :h0       (h0 base-rate ref-nm)
-   :adj      (get daylight-adj (:daylight passage) 1.0)})
+  (let [basis (spatial-basis cfg lat lon doy)]
+    {:basis    basis
+     :mask     (support-mask basis)
+     :contribs (attr-x-ref cfg boat passage)
+     :h0       (h0 base-rate ref-nm)
+     :adj      (get daylight-adj (:daylight passage) 1.0)}))
 
 (defn plan-hazard-draw
   "hazard_per_nm for one paired (spatial-draw, attr-draw) using a point-plan:
-   h0 * RR_d * attr_mult_d, scaled by the daylight factor."
+   h0 * mask * RR_d * attr_mult_d, scaled by the daylight factor. The support
+   mask tapers the rate to ~0 in waters with no RBF support (see `support-mask`)."
   [cfg plan sdraw beta]
   (let [rr   (rr-draw cfg sdraw (:basis plan))
         mult (js/Math.exp (attr-adj-draw (:contribs plan) beta))]
-    (* (:h0 plan) (:adj plan) rr mult)))
+    (* (:h0 plan) (:adj plan) (:mask plan) rr mult)))
 
 ;; ── Poisson exposure / percentiles ───────────────────────────────────────────
 
@@ -250,10 +275,10 @@
   [cfg lat lon doy boat passage nm base-rate ref-nm]
   (let [plan (point-plan cfg lat lon doy boat passage base-rate ref-nm)]
     (summary
-      (map (fn [[sdraw beta]]
-             (let [lam (* (plan-hazard-draw cfg plan sdraw beta) nm)]
-               (- 1.0 (js/Math.exp (- lam)))))
-           (draw-pairs cfg)))))
+     (map (fn [[sdraw beta]]
+            (let [lam (* (plan-hazard-draw cfg plan sdraw beta) nm)]
+              (- 1.0 (js/Math.exp (- lam)))))
+          (draw-pairs cfg)))))
 
 (defn route-risk
   "Percentile summary of p_route over draws. segments is a seq of
@@ -269,13 +294,13 @@
                        :nm nm})
                     segments)]
     (summary
-      (map (fn [[sdraw beta]]
-             (let [lam (reduce
-                         (fn [acc {:keys [plan nm]}]
-                           (+ acc (* (plan-hazard-draw cfg plan sdraw beta) nm)))
-                         0.0 plans)]
-               (- 1.0 (js/Math.exp (- lam)))))
-           (draw-pairs cfg)))))
+     (map (fn [[sdraw beta]]
+            (let [lam (reduce
+                       (fn [acc {:keys [plan nm]}]
+                         (+ acc (* (plan-hazard-draw cfg plan sdraw beta) nm)))
+                       0.0 plans)]
+              (- 1.0 (js/Math.exp (- lam)))))
+          (draw-pairs cfg)))))
 
 ;; ── Heatmap factoring (posterior-mean point estimate) ─────────────────────────
 ;;
@@ -321,12 +346,12 @@
    Uses the posterior-mean draws. Rebuild when doy/base-rate/ref-nm change."
   [cfg mean-sd mean-attr lat lon doy depth-ord distance-ord base-rate ref-nm]
   (let [basis (spatial-basis cfg lat lon doy)
-        rr    (rr-draw cfg mean-sd basis)
+        rr    (* (rr-draw cfg mean-sd basis) (support-mask basis))
         oi    (:ord-idx cfg)
         smult (js/Math.exp
-                (+ (* (nth mean-attr (get oi :depth)) (z cfg depth-ord :depth))
-                   (* (nth mean-attr (get oi :distance))
-                      (z cfg distance-ord :distance))))]
+               (+ (* (nth mean-attr (get oi :depth)) (z cfg depth-ord :depth))
+                  (* (nth mean-attr (get oi :distance))
+                     (z cfg distance-ord :distance))))]
     {:rr rr :static-mult smult :scale (* (h0 base-rate ref-nm) ref-nm)}))
 
 (defn dynamic-scalar
@@ -342,17 +367,17 @@
                (* (nth mean-attr (get oi :wind)) (z cfg (:wind passage) :wind))
                (* (nth mean-attr (get oi :sea)) (z cfg (:sea passage) :sea))
                (reduce
-                 (fn [acc [catg lvl]]
-                   (let [jk (get cat-key->json catg)]
-                     (if (or (= lvl (get ref jk))
-                             (nil? (get-in ci [jk lvl])))
-                       acc
-                       (+ acc (nth mean-attr (get-in ci [jk lvl]))))))
-                 0.0
-                 {:sailing (:sailing boat)
-                  :antifoul (:antifoul boat)
-                  :hull (:hull boat)
-                  :rudder (:rudder boat)}))]
+                (fn [acc [catg lvl]]
+                  (let [jk (get cat-key->json catg)]
+                    (if (or (= lvl (get ref jk))
+                            (nil? (get-in ci [jk lvl])))
+                      acc
+                      (+ acc (nth mean-attr (get-in ci [jk lvl]))))))
+                0.0
+                {:sailing (:sailing boat)
+                 :antifoul (:antifoul boat)
+                 :hull (:hull boat)
+                 :rudder (:rudder boat)}))]
     (* (js/Math.exp adj) (get daylight-adj (:daylight passage) 1.0))))
 
 (defn heatmap-intensity

@@ -187,19 +187,34 @@
   "Warm yellow→orange→red ramp for the historical-incident heatmap."
   #js {"0.4" "#ffd166" "0.7" "#ff9f1c" "1.0" "#e63946"})
 
-(defn- parse-cell-key
-  "Recover the cell centre [lat lon] from a \"LI,OI\" grid key (lat=LI/10)."
-  [k]
-  (let [[li oi] (.split k ",")]
-    [(/ (js/parseInt li 10) 10.0)
-     (/ (js/parseInt oi 10) 10.0)]))
+;; Render lattice stride (over the 0.1° grid) and coastal-land fill radius.
+(def ^:private render-stride 2)
+(def ^:private fill-radius 3)
+
+(defn- nearest-sea-cell
+  "The {d,c} of the nearest sea cell to integer-tenths (li,oi) within fill-radius
+   rings, or nil. Used to fill coastal-land lattice points (so the field covers
+   the coast); deeper inland finds nothing and is left unpainted."
+  [cells li oi]
+  (loop [r 1]
+    (when (<= r fill-radius)
+      (or (some (fn [[di dj]]
+                  (when (= r (max (js/Math.abs di) (js/Math.abs dj)))
+                    (get cells (str (+ li di) "," (+ oi dj)))))
+                (for [di (range (- r) (inc r))
+                      dj (range (- r) (inc r))]
+                  [di dj]))
+          (recur (inc r))))))
 
 (defn- build-static-cells!
-  "Sub-sample the geo grid (~every 3rd cell per axis ≈ 0.3°) and precompute the
-   per-cell location+season static part once. Each entry's :S is the
-   {:rr :static-mult :scale} map from core/heatmap-static, which depends on the
-   cell lat/lon, the cell depth/distance, and the current doy + base-rate +
-   ref-nm. Rebuild when doy/base-rate/ref-nm change. Stores [{:lat :lon :S} …]."
+  "Render the field on a `render-stride`×0.1° lattice over the grid bbox, with
+   coastal-land fill, and precompute the per-cell location+season static part once.
+   Each lattice point uses its own sea cell's depth/distance, or — for coastal land
+   within fill-radius of the sea — the nearest sea cell's depth/distance, so the
+   field tiles continuously up to the coast. Each entry's :S is the
+   {:rr :static-mult :scale} map from core/heatmap-static (depends on lat/lon, the
+   cell depth/distance, the current doy + base-rate + ref-nm). Rebuild when
+   doy/base-rate/ref-nm change. Stores [{:lat :lon :S} …]."
   [cfg grid]
   (let [mean-sd   (core/mean-spatial-draw cfg)
         mean-attr (core/mean-attr-draw cfg)
@@ -208,16 +223,21 @@
         base-rate (:base-rate pass)
         ref-nm    (:ref-nm pass)
         cells     (get grid "cells")
+        bounds    (get grid "bounds")
+        li-min    (js/Math.round (* (get bounds "lat_min") 10.0))
+        li-max    (js/Math.round (* (get bounds "lat_max") 10.0))
+        oi-min    (js/Math.round (* (get bounds "lon_min") 10.0))
+        oi-max    (js/Math.round (* (get bounds "lon_max") 10.0))
         out       (transient [])]
-    (doseq [[k v] cells]
-      (let [[lat lon] (parse-cell-key k)
-            ;; sub-sample on the 0.1° integer indices: keep every 3rd in each axis
-            li (js/Math.round (* lat 10.0))
-            oi (js/Math.round (* lon 10.0))]
-        (when (and (zero? (mod li 3)) (zero? (mod oi 3)))
-          (let [s (core/heatmap-static cfg mean-sd mean-attr lat lon doy
+    (doseq [li (range li-min (inc li-max) render-stride)
+            oi (range oi-min (inc oi-max) render-stride)]
+      (when-let [v (or (get cells (str li "," oi))
+                       (nearest-sea-cell cells li oi))]
+        (let [lat (/ li 10.0)
+              lon (/ oi 10.0)
+              s   (core/heatmap-static cfg mean-sd mean-attr lat lon doy
                                        (get v "d") (get v "c") base-rate ref-nm)]
-            (conj! out {:lat lat :lon lon :S s})))))
+          (conj! out {:lat lat :lon lon :S s}))))
     (reset! static-cells (persistent! out))
     (count @static-cells)))
 
@@ -231,9 +251,10 @@
 ;; yellow→red ramp, so a hotspot is always red and quiet water always green at any
 ;; zoom, with no stripes.
 
-;; Each sub-sampled cell spans 0.3° (every 3rd 0.1° grid cell), so paint a
-;; 0.3°×0.3° rectangle centred on the cell so the field tiles seamlessly.
-(def ^:private cell-deg 0.3)
+;; The field is rendered on a `render-stride`×0.1° lattice with coastal-land fill,
+;; so paint a cell-deg square centred on each cell so the field tiles seamlessly
+;; right up to (and slightly over) the coastline.
+(def ^:private cell-deg (* render-stride 0.1))
 (def ^:private cell-half-deg (/ cell-deg 2.0))
 
 ;; FIXED display domain for the colour ramp (intensity = sigmoid(D+S)·daylight).
@@ -822,6 +843,7 @@
              :setDoy         (fn [doy] (set-param! "passage" "doy" doy)
                                (:doy @passage-params))
              :incidentCount  (fn [] (count (incidents-in-window)))
+             :staticCellCount (fn [] (count @static-cells))
              :setRiskOpacity (fn [o] (set-risk-opacity! o)
                                (when-let [l @risk-heat-layer]
                                  (.. l -options -opacity)))

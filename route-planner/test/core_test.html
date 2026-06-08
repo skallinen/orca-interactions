@@ -146,7 +146,17 @@
         (log-result (> gib-w gib-s) "seasonal: Gibraltar winter > summer"
                     "winter=" gib-w "summer=" gib-s)
         (log-result (> gal-s gal-w) "seasonal: Galicia summer > winter"
-                    "summer=" gal-s "winter=" gal-w)))
+                    "summer=" gal-s "winter=" gal-w))
+
+      ;; 7. SUPPORT TAPER: the RBF field reverts to a neutral constant far from
+      ;;    all centers (deep open Atlantic / Mediterranean), so the support mask
+      ;;    must be ~1 in well-sailed waters and ->0 in that data-free void.
+      (let [mask (fn [la lo dy] (c/support-mask (c/spatial-basis cfg la lo dy)))
+            sailed (mask 38.0 -9.0 232)     ;; Portuguese corridor (supported)
+            med    (mask 37.0 4.0 232)]     ;; deep Mediterranean (void)
+        (log-result (and (> sailed 0.8) (< med 0.1))
+                    "support mask: sailed ~1, void ~0"
+                    "sailed=" sailed "void=" med)))
 
     (catch :default e
       (js/console.error (str "EXCEPTION during tests: " e))
