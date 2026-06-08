@@ -28,4 +28,14 @@
   ;;   clojure -X:smoke orca.blog-smoke/install  (one-time: fetch chromium)
   :smoke {:extra-paths ["test"]
           :extra-deps {com.microsoft.playwright/playwright {:mvn/version "1.60.0"}}
-          :exec-fn orca.blog-smoke/run}}}
+          :exec-fn orca.blog-smoke/run}
+  ;; Headless-browser test of the route-planner pure-core math:
+  ;;   clojure -X:planner-smoke
+  :planner-smoke {:extra-paths ["test"]
+                  :extra-deps {com.microsoft.playwright/playwright {:mvn/version "1.60.0"}}
+                  :exec-fn orca.planner-smoke/run}
+  ;; Headless-browser test of the route-planner app shell + data load:
+  ;;   clojure -X:app-smoke
+  :app-smoke {:extra-paths ["test"]
+              :extra-deps {com.microsoft.playwright/playwright {:mvn/version "1.60.0"}}
+              :exec-fn orca.planner-app-smoke/run}}}

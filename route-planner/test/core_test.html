@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>core tests loading…</title>
+</head>
+<body>
+<h1>orca.planner.core headless tests</h1>
+<p>Open the browser console; the page title reflects PASS/FAIL.</p>
+
+<!-- React (required by Scittle's Reagent plugin; harmless here) -->
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/scittle@0.6.15/dist/scittle.js" type="application/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/scittle@0.6.15/dist/scittle.reagent.js" type="application/javascript"></script>
+
+<script type="application/x-scittle" src="../src/planner_core.cljs"></script>
+
+<script type="application/x-scittle">
+(ns orca.planner.core-test
+  (:require [orca.planner.core :as c]))
+
+;; ── Tiny assertion framework ────────────────────────────────────────────────
+
+(def failures (atom []))
+
+(defn log-result [pass? label & nums]
+  (let [tag (if pass? "[PASS]" "[FAIL]")]
+    (js/console.log (apply str tag " " label " | " (interpose " " nums)))
+    (when-not pass?
+      (js/console.error (str "FAIL: " label " | " (apply str (interpose " " nums))))
+      (swap! failures conj label))))
+
+(defn finish []
+  (if (empty? @failures)
+    (do (set! (.-title js/document) "CORE TESTS PASS")
+        (js/console.log "ALL CORE TESTS PASS"))
+    (do (set! (.-title js/document)
+              (str "CORE TESTS FAIL: " (first @failures)))
+        (js/console.error (str "CORE TESTS FAIL: " (first @failures))))))
+
+;; ── King-Zeng reconstructed inline (parity reference) ───────────────────────
+
+(defn ref-king-zeng [sample-rate base-rate]
+  (- (js/Math.log (/ base-rate (- 1.0 base-rate)))
+     (js/Math.log (/ sample-rate (- 1.0 sample-rate)))))
+
+(defn ref-standardize [std jk raw]
+  (let [m (get-in std [jk :mean]) s (get-in std [jk :sd])]
+    (/ (- raw m) s)))
+
+;; Reconstruct the published calculator's pre-sigmoid logit from raw JSON,
+;; independent of planner_core, for the parity assert.
+(defn ref-logit [data draw depth-ord distance-ord boat passage]
+  (let [std (:standardization data)
+        cats (:categories data)
+        layout (:layout data)
+        index-of (fn [coll x]
+                   (or (first (keep-indexed (fn [i v] (when (= v x) i)) coll))
+                       -1))
+        idx (fn [pfx cat-key nm]
+              ;; find layout index whose name is pfx_<offset> where the
+              ;; category list at offset equals nm.
+              (let [levels (get cats cat-key)
+                    off (index-of levels nm)
+                    target (str pfx "_" off)]
+                (index-of layout target)))]
+    (+ (nth draw 0)
+       (* (nth draw 1) (ref-standardize std :depth_ord depth-ord))
+       (* (nth draw 2) (:autopilot boat))
+       (* (nth draw 3) (ref-standardize std :speed_ord (:speed boat)))
+       (* (nth draw 4) (ref-standardize std :boat_length_ord (:length boat)))
+       (* (nth draw 5) (ref-standardize std :distance_ord distance-ord))
+       (* (nth draw 6) (ref-standardize std :wind_ord (:wind passage)))
+       (* (nth draw 7) (ref-standardize std :sea_state_ord (:sea passage)))
+       (nth draw (idx "s" :sailing_mode (:sailing boat)))
+       (nth draw (idx "a" :antifoul (:antifoul boat)))
+       (nth draw (idx "h" :hull_colour (:hull boat)))
+       (nth draw (idx "r" :rudder (:rudder boat)))
+       (ref-king-zeng (:sample_rate data) (:base-rate passage)))))
+
+;; ── Run all tests once the JSON is fetched ──────────────────────────────────
+
+(defn run-tests [data]
+  (try
+    (let [cfg   (c/derive-config data)
+          draws (:draws data)
+          ;; fixed example params
+          boat    {:autopilot 0 :speed 2 :length 1
+                   :sailing "Motoring" :antifoul "Black"
+                   :hull "White/light" :rudder "Spade"}
+          passage {:wind 1 :sea 0 :daylight "Average" :base-rate 0.025}
+          depth-ord 2 distance-ord 2
+          ;; a point for parity / poisson identity
+          lat 36.0 lon -8.0]
+
+      ;; 1a. PARITY: base-logit == reconstructed calculator logit, < 1e-9.
+      (let [max-diff (reduce
+                       (fn [m d]
+                         (let [bl (c/base-logit cfg d depth-ord distance-ord
+                                                boat passage)
+                               rl (ref-logit data d depth-ord distance-ord
+                                             boat passage)]
+                           (max m (js/Math.abs (- bl rl)))))
+                       0.0 draws)]
+        (log-result (< max-diff 1e-9) "parity base-logit vs calculator"
+                    "max-abs-diff=" max-diff))
+
+      ;; 1b. POISSON ROUND-TRIP: p_seg(ref) == p_transit per draw, < 1e-9, and
+      ;;     segment-risk.median (nm=ref) == median of p_transit.
+      (let [ref-nm 100.0
+            p-transits (mapv #(c/predict-transit-p cfg % lat lon depth-ord
+                                                   distance-ord boat passage)
+                             draws)
+            ;; per-draw |p_seg(ref) - p_transit|
+            max-id (reduce
+                     (fn [m pt]
+                       (let [lam (- (js/Math.log (- 1.0 pt)))
+                             pseg (- 1.0 (js/Math.exp (- (* lam (/ ref-nm ref-nm)))))]
+                         (max m (js/Math.abs (- pseg pt)))))
+                     0.0 p-transits)
+            sr (c/segment-risk cfg draws lat lon depth-ord distance-ord
+                               boat passage ref-nm ref-nm)
+            sorted-pt (vec (sort p-transits))
+            med-pt (c/percentile sorted-pt 0.50)
+            med-diff (js/Math.abs (- (:median sr) med-pt))]
+        (log-result (and (< max-id 1e-9) (< med-diff 1e-9))
+                    "poisson round-trip identity"
+                    "max|pseg-pt|=" max-id "median-diff=" med-diff))
+
+      ;; 2. CI ORDERING for segment-risk and route-risk.
+      (let [sr (c/segment-risk cfg draws 37.0 -9.0 1 3 boat passage 75.0 100.0)
+            segs [{:lat 37.0 :lon -9.0 :depth-ord 1 :distance-ord 3 :nm 75.0}
+                  {:lat 36.2 :lon -6.1 :depth-ord 2 :distance-ord 1 :nm 120.0}]
+            rr (c/route-risk cfg draws boat passage segs 100.0)]
+        (log-result (and (< (:lo89 sr) (:median sr)) (< (:median sr) (:hi89 sr)))
+                    "segment-risk CI ordering"
+                    "lo=" (:lo89 sr) "med=" (:median sr) "hi=" (:hi89 sr))
+        (log-result (and (< (:lo89 rr) (:median rr)) (< (:median rr) (:hi89 rr)))
+                    "route-risk CI ordering"
+                    "lo=" (:lo89 rr) "med=" (:median rr) "hi=" (:hi89 rr)))
+
+      ;; 3. MONOTONE exposure: segment median increases with nm; route median
+      ;;    increases when appending a segment.
+      (let [pt 37.0 pn -9.0
+            med (fn [nm] (:median (c/segment-risk cfg draws pt pn 1 2 boat
+                                                  passage nm 100.0)))
+            m25 (med 25.0) m50 (med 50.0) m100 (med 100.0) m200 (med 200.0)
+            seg1 [{:lat pt :lon pn :depth-ord 1 :distance-ord 2 :nm 80.0}]
+            seg2 (conj seg1 {:lat 36.2 :lon -6.1 :depth-ord 2 :distance-ord 1
+                             :nm 90.0})
+            r1 (:median (c/route-risk cfg draws boat passage seg1 100.0))
+            r2 (:median (c/route-risk cfg draws boat passage seg2 100.0))]
+        (log-result (and (< m25 m50) (< m50 m100) (< m100 m200))
+                    "segment monotone in nm"
+                    "25=" m25 "50=" m50 "100=" m100 "200=" m200)
+        (log-result (< r1 r2) "route monotone on append"
+                    "1seg=" r1 "2seg=" r2))
+
+      ;; 4. SPATIAL effect: Gibraltar hotspot strictly higher than open ocean,
+      ;;    identical params/depth/distance.
+      (let [med-pt (fn [la lo]
+                     (let [ps (mapv #(c/predict-transit-p cfg % la lo 2 2 boat
+                                                          passage) draws)]
+                       (c/percentile (vec (sort ps)) 0.50)))
+            gib (med-pt 36.0 -5.5)
+            atl (med-pt 38.0 -18.0)]
+        (log-result (> gib atl) "spatial hotspot > open ocean"
+                    "gibraltar=" gib "open-ocean=" atl)))
+
+    (catch :default e
+      (js/console.error (str "EXCEPTION during tests: " e))
+      (swap! failures conj (str "exception: " e))))
+  (finish))
+
+(-> (js/fetch "../posterior_planner.json")
+    (.then #(.json %))
+    (.then #(run-tests (js->clj % :keywordize-keys true)))
+    (.catch (fn [e]
+              (js/console.error (str "FETCH FAILED: " e))
+              (set! (.-title js/document) (str "CORE TESTS FAIL: fetch " e)))))
+</script>
+</body>
+</html>
