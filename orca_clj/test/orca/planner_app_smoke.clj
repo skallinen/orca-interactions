@@ -292,6 +292,50 @@
        :detail (str "tabs " tabs0 "->" tabs1 " routeCount " n0 "->" n1
                     " new-errors=" (not no-new-errs?))})))
 
+;; ── I2.2 check: waypoint delete-then-readd + drag moves risk ──────────────────
+;;
+;; Drives the editing paths through the window.__planner hooks (the same code the
+;; marker click/dragend handlers call): deleteWaypoint goes through the marker
+;; delete path; moveWaypoint goes through the dragend path.
+
+(defn- check-edit-delete-move
+  "delete-then-readd: lay two waypoints, delete one (count drops), re-add (count
+   recovers); move-changes-risk: build a route, read its median, move a waypoint
+   into clearly different water and assert the median changes. No console errors."
+  [{:keys [page console perrors]}]
+  (let [err0  (count (filterv #(= "error" (:type %)) @console))
+        perr0 (count @perrors)]
+    ;; -- delete-then-readd --
+    (p-eval page "() => window.__planner.clearRoute()")
+    (settle page)
+    (p-eval page "() => window.__planner.addWaypoint(38.0, -11.0)")
+    (p-eval page "() => window.__planner.addWaypoint(38.0, -12.0)")
+    (settle page)
+    (let [c2  (num-of (p-eval page "() => window.__planner.waypointCount()"))
+          dom2 (read-id-number page "waypoint-count")]
+      (p-eval page "() => window.__planner.deleteWaypoint(1)")
+      (settle page)
+      (let [c1  (num-of (p-eval page "() => window.__planner.waypointCount()"))]
+        (p-eval page "() => window.__planner.addWaypoint(38.0, -12.0)")
+        (settle page)
+        (let [c2b (num-of (p-eval page "() => window.__planner.waypointCount()"))
+              ;; -- move-changes-risk: from moderate water toward a hotspot --
+              med0 (num-of (p-eval page "() => window.__planner.routeMedian()"))
+              _    (p-eval page "() => window.__planner.moveWaypoint(1, 36.0, -5.5)")
+              _    (settle page)
+              med1 (num-of (p-eval page "() => window.__planner.routeMedian()"))
+              no-new-errs? (and (= err0 (count (filterv #(= "error" (:type %))
+                                                        @console)))
+                                (= perr0 (count @perrors)))
+              del-readd-ok? (and (= 2.0 c2) (= 2.0 dom2) (= 1.0 c1) (= 2.0 c2b))
+              move-ok? (boolean (and med0 med1 (not= med0 med1)))]
+          ;; restore a clean moderate route for any later checks
+          (build-mod-route! page)
+          {:pass? (boolean (and del-readd-ok? move-ok? no-new-errs?))
+           :detail (str "count 2->" c1 "->" c2b " (#waypoint-count=" dom2 ")"
+                        " median " med0 "->" med1 " moved=" move-ok?
+                        " new-errors=" (not no-new-errs?))})))))
+
 ;; Parity point P=(39.6,-12.3): full-draw spatial offset fbar≈0.064 and, crucially,
 ;; the median of sigmoid(base_logit+f) matches sigmoid(base_logit) to ~0.01%.
 (def ^:private parity-P [39.6 -12.3])
@@ -370,7 +414,9 @@
    {:label "#7 CI ordering lo<med<hi" :check-fn check-ci-ordering}
    {:label "#8 Motoring > Sailing" :check-fn check-motor-gt-sail}
    {:label "#9 add second route via #add-route-btn" :check-fn check-add-route}
-   {:label "#10 parity vs calculator (<1% rel)" :check-fn check-parity}])
+   {:label "#10 parity vs calculator (<1% rel)" :check-fn check-parity}
+   {:label "I2.2 delete + move (delete-readd + drag changes risk)"
+    :check-fn check-edit-delete-move}])
 
 (defn run
   "Run the route-planner app shell headless checks. Returns a result map;

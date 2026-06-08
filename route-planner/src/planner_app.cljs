@@ -67,6 +67,13 @@
 (defonce waypoint-markers (atom []))
 (defonce segment-lines (atom []))
 
+;; Per-control debounce timers + window for the Phase-7 slider debounce, also
+;; reused by the I2.2 waypoint-drag handler. Declared here (ahead of their main
+;; users in Phase 7) so the marker drag handler can share them.
+(defonce ^:private debounce-timers (atom {}))
+
+(def ^:private debounce-ms 80)
+
 ;; Reactive results so the sidebar re-renders on every route change.
 (defonce segment-summaries (r/atom []))     ;; per sub-segment {:median :lo89 :hi89 …}
 (defonce route-summary (r/atom nil))        ;; whole-route {:median :lo89 :hi89}
@@ -127,31 +134,31 @@
   []
   (set-status! "Loading data…")
   (-> (js/Promise.all
-       #js [(fetch-json "posterior_planner.json")
-            (fetch-json "../orca_reportlist.json")
-            (fetch-json "geo_grid.json")])
+        #js [(fetch-json "posterior_planner.json")
+             (fetch-json "../orca_reportlist.json")
+             (fetch-json "geo_grid.json")])
       (.then
-       (fn [results]
-         (let [posterior (js->clj (aget results 0) :keywordize-keys true)
-               reports   (js->clj (aget results 1) :keywordize-keys false)
+        (fn [results]
+          (let [posterior (js->clj (aget results 0) :keywordize-keys true)
+                reports   (js->clj (aget results 1) :keywordize-keys false)
                 ;; geo-grid cells must keep STRING keys ("361,-59") for lookup,
                 ;; so do NOT keywordize this one.
-               grid      (js->clj (aget results 2) :keywordize-keys false)]
-           (reset! posterior-data posterior)
-           (reset! incidents (parse-incidents reports))
-           (reset! geo-grid grid)
-           (set-status! "Ready")
-           (reveal-loaded! "Ready")
-           (js/console.log
-            (str "orca planner: loaded "
-                 (count (:draws posterior)) " draws, "
-                 (count @incidents) " incidents, "
-                 (count (get grid "cells")) " sea cells"))
-           (init-map!))))
+                grid      (js->clj (aget results 2) :keywordize-keys false)]
+            (reset! posterior-data posterior)
+            (reset! incidents (parse-incidents reports))
+            (reset! geo-grid grid)
+            (set-status! "Ready")
+            (reveal-loaded! "Ready")
+            (js/console.log
+              (str "orca planner: loaded "
+                   (count (:draws posterior)) " draws, "
+                   (count @incidents) " incidents, "
+                   (count (get grid "cells")) " sea cells"))
+            (init-map!))))
       (.catch
-       (fn [e]
-         (js/console.error (str "orca planner: data load failed: " e))
-         (set-status! (str "Load failed: " e))))))
+        (fn [e]
+          (js/console.error (str "orca planner: data load failed: " e))
+          (set-status! (str "Load failed: " e))))))
 
 ;; ── Leaflet map + layers (Phase 5) ───────────────────────────────────────────
 
@@ -210,21 +217,21 @@
 
 (defn- make-incident-heat-layer []
   (js/L.heatLayer
-   (apply array (mapv (fn [[lat lon]] #js [lat lon 1.0]) @incidents))
-   #js {:radius 18 :blur 22 :max 1.0 :gradient incident-gradient}))
+    (apply array (mapv (fn [[lat lon]] #js [lat lon 1.0]) @incidents))
+    #js {:radius 18 :blur 22 :max 1.0 :gradient incident-gradient}))
 
 (defn- make-risk-heat-layer [cfg md]
   (js/L.heatLayer
-   (risk-heat-data cfg md)
-   #js {:radius 16 :blur 18 :max 1.0 :gradient risk-gradient}))
+    (risk-heat-data cfg md)
+    #js {:radius 16 :blur 18 :max 1.0 :gradient risk-gradient}))
 
 (defn- make-incident-points-layer []
   (let [grp (js/L.layerGroup)]
     (doseq [[lat lon] @incidents]
       (.addTo (js/L.circleMarker
-               #js [lat lon]
-               #js {:radius 3 :color "#00a8cc" :weight 1
-                    :fillColor "#00a8cc" :fillOpacity 0.6})
+                #js [lat lon]
+                #js {:radius 3 :color "#00a8cc" :weight 1
+                     :fillColor "#00a8cc" :fillOpacity 0.6})
               grp))
     grp))
 
@@ -251,12 +258,12 @@
           md  (core/mean-draw (:draws @posterior-data))
           m   (js/L.map "map" #js {:center #js [37.5 -7.5] :zoom 5})]
       (-> (js/L.tileLayer
-           "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-           #js {:attribution
-                (str "&copy; <a href=\"https://www.openstreetmap.org/copyright\">"
-                     "OpenStreetMap</a> contributors &copy; "
-                     "<a href=\"https://carto.com/attributions\">CARTO</a>")
-                :subdomains "abcd" :maxZoom 19})
+            "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            #js {:attribution
+                 (str "&copy; <a href=\"https://www.openstreetmap.org/copyright\">"
+                      "OpenStreetMap</a> contributors &copy; "
+                      "<a href=\"https://carto.com/attributions\">CARTO</a>")
+                 :subdomains "abcd" :maxZoom 19})
           (.addTo m))
       (reset! map-ref m)
       (let [n (build-static-cells! cfg md @geo-grid)]
@@ -310,11 +317,11 @@
         (if (> rad 3)
           {:depth_ord 3 :distance_ord 3}
           (let [hit (first
-                     (for [da (range (- rad) (inc rad))
-                           db (range (- rad) (inc rad))
-                           :let [c (cell-at (+ li da) (+ oi db))]
-                           :when c]
-                       c))]
+                      (for [da (range (- rad) (inc rad))
+                            db (range (- rad) (inc rad))
+                            :let [c (cell-at (+ li da) (+ oi db))]
+                            :when c]
+                        c))]
             (if hit
               {:depth_ord (int (get hit "d")) :distance_ord (int (get hit "c"))}
               (recur (inc rad)))))))))
@@ -326,27 +333,27 @@
   [pts]
   (let [step (:seg-step-nm @passage-params)]
     (vec
-     (mapcat
-      (fn [[[lat1 lon1] [lat2 lon2]]]
-        (let [leg-nm (/ (core/haversine-km lat1 lon1 lat2 lon2) 1.852)
-              n      (max 1 (js/Math.ceil (/ leg-nm step)))
-              per-nm (/ leg-nm n)]
-          (for [i (range n)]
-            (let [t0   (/ i n)
-                  t1   (/ (inc i) n)
-                  tm   (/ (+ t0 t1) 2.0)
-                  alat (+ lat1 (* (- lat2 lat1) t0))
-                  alon (+ lon1 (* (- lon2 lon1) t0))
-                  blat (+ lat1 (* (- lat2 lat1) t1))
-                  blon (+ lon1 (* (- lon2 lon1) t1))
-                  mlat (+ lat1 (* (- lat2 lat1) tm))
-                  mlon (+ lon1 (* (- lon2 lon1) tm))
-                  {:keys [depth_ord distance_ord]} (geo-lookup mlat mlon)]
-              {:lat mlat :lon mlon
-               :depth-ord depth_ord :distance-ord distance_ord
-               :nm per-nm
-               :a [alat alon] :b [blat blon]}))))
-      (partition 2 1 pts)))))
+      (mapcat
+        (fn [[[lat1 lon1] [lat2 lon2]]]
+          (let [leg-nm (/ (core/haversine-km lat1 lon1 lat2 lon2) 1.852)
+                n      (max 1 (js/Math.ceil (/ leg-nm step)))
+                per-nm (/ leg-nm n)]
+            (for [i (range n)]
+              (let [t0   (/ i n)
+                    t1   (/ (inc i) n)
+                    tm   (/ (+ t0 t1) 2.0)
+                    alat (+ lat1 (* (- lat2 lat1) t0))
+                    alon (+ lon1 (* (- lon2 lon1) t0))
+                    blat (+ lat1 (* (- lat2 lat1) t1))
+                    blon (+ lon1 (* (- lon2 lon1) t1))
+                    mlat (+ lat1 (* (- lat2 lat1) tm))
+                    mlon (+ lon1 (* (- lon2 lon1) tm))
+                    {:keys [depth_ord distance_ord]} (geo-lookup mlat mlon)]
+                {:lat mlat :lon mlon
+                 :depth-ord depth_ord :distance-ord distance_ord
+                 :nm per-nm
+                 :a [alat alon] :b [blat blon]}))))
+        (partition 2 1 pts)))))
 
 (defn- clear-route-graphics!
   "Remove the active route's waypoint markers and segment polylines."
@@ -357,23 +364,65 @@
   (reset! waypoint-markers [])
   (reset! segment-lines []))
 
+;; Waypoint markers are draggable L.markers (circleMarkers can't drag in
+;; Leaflet 1.9), using an inline-styled divIcon so no extra CSS is needed. The
+;; 18×18 icon gives a comfortable click/drag hit target; click deletes, drag
+;; moves. The drag recompute is debounced so it stays smooth (Phase-7 debounce).
+(def ^:private waypoint-drag-dk "waypoint/drag")
+
+(defn- waypoint-icon []
+  (js/L.divIcon
+    #js {:className "waypoint-marker"
+         :iconSize #js [18 18]
+         :iconAnchor #js [9 9]
+         :html (str "<div style=\"width:18px;height:18px;border-radius:50%;"
+                    "background:" accent-colour ";border:2px solid #0d1117;"
+                    "box-shadow:0 0 4px rgba(0,0,0,0.6);cursor:pointer;\"></div>")}))
+
+(defn- move-waypoint!
+  "Write [lat lon] into the active route's waypoint `idx` and recompute. Shared
+   by the marker dragend handler and the moveWaypoint test hook."
+  [idx lat lon]
+  (let [pts (active-points)]
+    (when (< idx (count pts))
+      (set-active-points! (assoc (vec pts) idx [lat lon]))
+      (refresh-route!))))
+
 (defn- draw-waypoint-markers! []
   (when-let [m @map-ref]
     (reset! waypoint-markers
             (vec
-             (map-indexed
-              (fn [idx [lat lon]]
-                (let [mk (js/L.circleMarker
-                          #js [lat lon]
-                          #js {:radius 6 :color accent-colour :weight 2
-                               :fillColor accent-colour :fillOpacity 0.9})]
-                  (.on mk "click"
-                       (fn [e]
-                         (.stopPropagation (.-originalEvent e))
-                         (delete-waypoint! idx)))
-                  (.addTo mk m)
-                  mk))
-              (active-points))))))
+              (map-indexed
+                (fn [idx [lat lon]]
+                  (let [mk (js/L.marker
+                             #js [lat lon]
+                             #js {:icon (waypoint-icon) :draggable true})]
+                    ;; Left/ctrl-click deletes; stopPropagation keeps the map
+                    ;; click handler from also appending a new waypoint.
+                    (.on mk "click"
+                         (fn [e]
+                           (js/L.DomEvent.stopPropagation e)
+                           (delete-waypoint! idx)))
+                    ;; Drag: update the marker's own latlng live, but debounce the
+                    ;; heavy route recompute. Final position recomputes on dragend.
+                    (.on mk "drag"
+                         (fn [e]
+                           (let [ll (.. e -target getLatLng)]
+                             (when-let [t (get @debounce-timers waypoint-drag-dk)]
+                               (js/clearTimeout t))
+                             (swap! debounce-timers assoc waypoint-drag-dk
+                                    (js/setTimeout
+                                      (fn [] (move-waypoint! idx (.-lat ll) (.-lng ll)))
+                                      debounce-ms)))))
+                    (.on mk "dragend"
+                         (fn [e]
+                           (when-let [t (get @debounce-timers waypoint-drag-dk)]
+                             (js/clearTimeout t))
+                           (let [ll (.. e -target getLatLng)]
+                             (move-waypoint! idx (.-lat ll) (.-lng ll)))))
+                    (.addTo mk m)
+                    mk))
+                (active-points))))))
 
 (defn- seg-tooltip [idx {:keys [depth-ord distance-ord]} {:keys [median lo89 hi89]}]
   (str "Seg " (inc idx) " — "
@@ -386,19 +435,19 @@
   (when-let [m @map-ref]
     (reset! segment-lines
             (vec
-             (map-indexed
-              (fn [idx seg]
-                (let [{:keys [median] :as summ} (nth summaries idx)
-                      {:keys [a b]} seg
-                      ln (js/L.polyline
-                          #js [#js [(first a) (second a)]
-                               #js [(first b) (second b)]]
-                          #js {:color (risk-colour median) :weight 5
-                               :opacity 0.85})]
-                  (.bindTooltip ln (seg-tooltip idx seg summ))
-                  (.addTo ln m)
-                  ln))
-              segs)))))
+              (map-indexed
+                (fn [idx seg]
+                  (let [{:keys [median] :as summ} (nth summaries idx)
+                        {:keys [a b]} seg
+                        ln (js/L.polyline
+                             #js [#js [(first a) (second a)]
+                                  #js [(first b) (second b)]]
+                             #js {:color (risk-colour median) :weight 5
+                                  :opacity 0.85})]
+                    (.bindTooltip ln (seg-tooltip idx seg summ))
+                    (.addTo ln m)
+                    ln))
+                segs)))))
 
 (defn refresh-route!
   "Recompute the active route's sub-segments, per-segment risk, colours and the
@@ -415,10 +464,10 @@
         segs  (if (>= (count pts) 2) (build-segments pts) [])]
     (if (and cfg (seq segs))
       (let [summaries (mapv
-                       (fn [{:keys [lat lon depth-ord distance-ord nm]}]
-                         (core/segment-risk cfg draws lat lon depth-ord
-                                            distance-ord boat pass nm ref))
-                       segs)
+                        (fn [{:keys [lat lon depth-ord distance-ord nm]}]
+                          (core/segment-risk cfg draws lat lon depth-ord
+                                             distance-ord boat pass nm ref))
+                        segs)
             route (core/route-risk cfg draws boat pass
                                    (mapv #(select-keys % [:lat :lon :depth-ord
                                                           :distance-ord :nm])
@@ -541,10 +590,8 @@
 ;; value into the bound atom immediately (so the control tracks the thumb), but
 ;; debounce the heavy recompute ~80 ms keyed per control. The final settle always
 ;; produces a recompute, so correctness is preserved. Selects/toggles bypass this.
-
-(defonce ^:private debounce-timers (atom {}))
-
-(def ^:private debounce-ms 80)
+;; (debounce-timers / debounce-ms are declared up in the route-drawing state
+;; block so the waypoint-drag handler can share them.)
 
 (defn set-param-debounced!
   "Store a slider value immediately, but debounce the heavy recompute per `dk`."
@@ -566,6 +613,8 @@
         #js {:addWaypoint    (fn [lat lon] (add-waypoint! lat lon)
                                (count (active-points)))
              :deleteWaypoint (fn [idx] (delete-waypoint! idx)
+                               (count (active-points)))
+             :moveWaypoint   (fn [idx lat lon] (move-waypoint! idx lat lon)
                                (count (active-points)))
              :waypointCount  (fn [] (count (active-points)))
              :clearRoute     (fn [] (clear-route!) 0)
@@ -679,8 +728,8 @@
      [:input {:type "range" :min mn :max mx :step 1 :value current
               :on-change (fn [e]
                            (set-param-debounced!
-                            group (name k)
-                            (js/parseInt (.. e -target -value) 10) dk))}]]))
+                             group (name k)
+                             (js/parseInt (.. e -target -value) 10) dk))}]]))
 
 (defn- pct-slider-row
   "Base-rate slider: shown as a percentage, stored as a fraction. min/max in %."
@@ -694,8 +743,8 @@
      [:input {:type "range" :min 1.0 :max 10.0 :step 0.5 :value pct
               :on-change (fn [e]
                            (set-param-debounced!
-                            "passage" "base-rate"
-                            (/ (js/parseFloat (.. e -target -value)) 100.0) dk))}]]))
+                             "passage" "base-rate"
+                             (/ (js/parseFloat (.. e -target -value)) 100.0) dk))}]]))
 
 (defn- ref-nm-slider-row
   "Reference passage-length slider (nm); affects absolute numbers only."
@@ -708,8 +757,8 @@
      [:input {:type "range" :min 25 :max 300 :step 25 :value current
               :on-change (fn [e]
                            (set-param-debounced!
-                            "passage" "ref-nm"
-                            (js/parseInt (.. e -target -value) 10) dk))}]]))
+                             "passage" "ref-nm"
+                             (js/parseInt (.. e -target -value) 10) dk))}]]))
 
 (defn vessel-controls []
   (let [b @boat-params]
@@ -776,18 +825,18 @@
      [:h2 "Route variants"]
      [:div.route-tabs
       (doall
-       (for [idx (range (count rs))]
-         ^{:key idx}
-         [:div.route-tab {:class (when (= idx active) "active")
-                          :on-click (fn [_] (select-route! idx))}
-          [:span.route-tab-label (str "Route " (route-letter idx))]
-          (when many?
-            [:span.route-tab-close
-             {:title "Delete route"
-              :on-click (fn [e]
-                          (.stopPropagation e)
-                          (delete-route! idx))}
-             "×"])]))
+        (for [idx (range (count rs))]
+          ^{:key idx}
+          [:div.route-tab {:class (when (= idx active) "active")
+                           :on-click (fn [_] (select-route! idx))}
+           [:span.route-tab-label (str "Route " (route-letter idx))]
+           (when many?
+             [:span.route-tab-close
+              {:title "Delete route"
+               :on-click (fn [e]
+                           (.stopPropagation e)
+                           (delete-route! idx))}
+              "×"])]))
       [:button.route-add
        {:id "add-route-btn"
         :on-click (fn [_] (add-route!))}
@@ -800,17 +849,17 @@
     [:div.panel
      [:h2 "Comparison"]
      (doall
-      (for [idx (range (count @routes))]
-        (let [summ (nth cmp idx nil)]
-          ^{:key idx}
-          [:div.cmp-row {:class (when (= idx @active-route) "active")}
-           [:span.cmp-label (str "Route " (route-letter idx))]
-           [:span.cmp-value.mono
-            (if summ
-              (str (.toFixed (* 100.0 (:median summ)) 1) "%"
-                   " [" (.toFixed (* 100.0 (:lo89 summ)) 1) "–"
-                   (.toFixed (* 100.0 (:hi89 summ)) 1) "% 89% CI]")
-              "— draw a route")]])))]))
+       (for [idx (range (count @routes))]
+         (let [summ (nth cmp idx nil)]
+           ^{:key idx}
+           [:div.cmp-row {:class (when (= idx @active-route) "active")}
+            [:span.cmp-label (str "Route " (route-letter idx))]
+            [:span.cmp-value.mono
+             (if summ
+               (str (.toFixed (* 100.0 (:median summ)) 1) "%"
+                    " [" (.toFixed (* 100.0 (:lo89 summ)) 1) "–"
+                    (.toFixed (* 100.0 (:hi89 summ)) 1) "% 89% CI]")
+               "— draw a route")]])))]))
 
 (defn caveat-note
   "Muted methodological caveat; interpolates the live reference passage length."
