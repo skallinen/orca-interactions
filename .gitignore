@@ -5,8 +5,12 @@ __pycache__/
 
 # Clojure / tooling caches
 .clj-kondo/.cache/
+**/.clj-kondo/.cache/
 .lsp/.cache/
 .cpcache/
+
+# Route-planner geo data prep scratch (intermediate GDAL/ERDDAP/coastline files)
+tmp_geo/
 
 # OS
 .DS_Store

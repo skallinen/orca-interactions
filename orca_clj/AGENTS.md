@@ -89,6 +89,30 @@ one.
 unit-tested against hand-computed / known reference values. Heavy MCMC paths
 must run end-to-end at least once whenever the code path they exercise changes.
 
+## Route planner (`route-planner/`)
+
+A standalone ClojureScript app (`route-planner/index.html` +
+`src/planner_core.cljs` pure math + `src/planner_app.cljs` Leaflet/Reagent UI)
+that this project produces data for and gates. See `route-planner/README.md` for
+the app itself and `README.md` here for the full breakdown.
+
+- **Artifacts:** `route-planner/posterior_planner.json` (500 draws: 30 base M3
+  columns copied unchanged from `blogpost/posterior_draws.json` plus the fitted
+  spatial block) and `route-planner/geo_grid.json` (depth/distance ordinals for
+  34,933 sea cells). The base columns are oracle-derived; do not regenerate them.
+- **Sources:** `src/orca/planner_fit.clj` (`orca.planner-fit`, the spatial fit),
+  `stan/spatial.stan` (treat as a `.stan` file: never run the Clojure formatter
+  on it), and `scripts/gen_geo_grid.clj` (Babashka grid generator).
+- **Key invariant:** the spatial term is a separate Bayesian presence/background
+  smoother (216 incident locations vs 3,000 sea-cell pseudo-absences, RBF basis,
+  50 centers, 346.875 km lengthscale, haversine) added as an offset to the M3
+  logit. It is fit separately because the uneventful reports lack coordinates.
+  Risk saturating near Gibraltar and the Galician coast is correct, not a bug.
+- **Gates:** `clojure -X:planner-smoke` (pure-core math) and `clojure -X:app-smoke`
+  (full app suite, Checks #1-#10, headless Chromium). Keep both green. The
+  `-smoke` runners are JVM-Playwright; if Chromium is missing run
+  `clojure -X:app-smoke orca.planner-app-smoke/install` once.
+
 ## CmdStan notes
 
 - `CMDSTAN` must point at a **writable copy** of the nix store tree (store is

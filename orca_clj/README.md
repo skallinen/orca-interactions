@@ -106,6 +106,54 @@ Endpoints, headers, worker count, retries and CSV column orderings live under
   ordering. M3 is preferred; M4 adds no credible effects.
 - **Convergence gate:** R̂ < 1.01, ESS > 400, 0 divergences.
 
+## Route planner (`route-planner/`)
+
+A standalone ClojureScript web app that turns the model into an interactive
+transit-risk map for the Iberian orca zone. It lives in `route-planner/`
+(`index.html` shell, `src/planner_core.cljs` pure math, `src/planner_app.cljs`
+Leaflet/Reagent UI) and is served as static files; see `route-planner/README.md`
+for how to open and use it.
+
+This project produces its data artifacts and gates it:
+
+| Artifact | What it is |
+|----------|------------|
+| `route-planner/posterior_planner.json` | 500 posterior draws (30 base M3 columns, copied unchanged from `blogpost/posterior_draws.json`) plus the fitted spatial block |
+| `route-planner/geo_grid.json`          | Depth/distance ordinals for 34,933 sea cells over 25-50°N, 20°W-5°E at 0.1° |
+
+| Source | What it does |
+|--------|--------------|
+| `src/orca/planner_fit.clj` (`orca.planner-fit`) | Bayesian presence/background spatial fit: 216 incident locations vs 3,000 sea-cell pseudo-absences, RBF basis (50 centers, lengthscale 346.875 km, haversine metric); exports `posterior_planner.json` |
+| `stan/spatial.stan`                              | The spatial smoother model |
+| `scripts/gen_geo_grid.clj`                       | Babashka geo-grid generator, writes `geo_grid.json` |
+
+### Modelling decision
+
+The spatial term is fit **separately** from the 30 base M3 attribute
+coefficients and added as an offset to the M3 logit. The base columns are copied
+unchanged from `blogpost/posterior_draws.json`. The reason is that the
+uneventful-passage reports carry no coordinates, so a joint fit of attributes and
+location is not posed; the spatial smoother instead learns where incidents
+concentrate (presence) against sea-cell pseudo-absences (background). The fit is
+faithful, so risk saturates near the Strait of Gibraltar and the
+Galician/Portuguese coast, which is where incidents actually concentrate.
+
+### Headless gates
+
+Two JVM-Playwright runners (under `test/`, served via the JDK SimpleFileServer)
+gate the app:
+
+```bash
+clojure -X:planner-smoke   # core math: runs route-planner/test/core_test.html
+clojure -X:app-smoke       # full app suite (Checks #1-#10) on index.html
+```
+
+`:planner-smoke` asserts the pure-core math (parity vs the blog calculator,
+Poisson round-trip, CI ordering, monotonicity, spatial hotspot > open ocean).
+`:app-smoke` loads the real app in headless Chromium and drives it through the
+`window.__planner` hooks (data load, heatmap re-tint, waypoint/segment/route
+risk, parity vs calculator).
+
 ### Known intentional gaps (not regenerated)
 
 A blog reader should not assume every number in the two posts is recomputed here.
