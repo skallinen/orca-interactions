@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orca Route Planner</title>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+<style>
+  :root {
+    --bg: #0d1117;
+    --sidebar-bg: rgba(13, 17, 23, 0.92);
+    --accent: #00a8cc;
+    --danger: #e63946;
+    --safe: #2dc653;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --border: rgba(255, 255, 255, 0.08);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Inter", system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  #app {
+    position: relative;
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* Map fills the left / most of the viewport, full height. */
+  #map {
+    flex: 1 1 auto;
+    height: 100vh;
+    background: var(--bg);
+  }
+
+  /* Sidebar: fixed-width dark nautical panel on the right. */
+  #sidebar {
+    flex: 0 0 360px;
+    width: 360px;
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--sidebar-bg);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border-left: 1px solid var(--border);
+    padding: 20px;
+    z-index: 1000;
+  }
+
+  #sidebar h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 0 0 4px 0;
+    letter-spacing: -0.01em;
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 0.82rem;
+    margin: 0 0 18px 0;
+  }
+
+  .panel {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 14px;
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .panel h2 {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin: 0 0 10px 0;
+  }
+
+  .num, .mono { font-family: "JetBrains Mono", monospace; }
+
+  #status, #status-loaded {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.8rem;
+  }
+
+  #status { color: var(--text-dim); }
+
+  #status-loaded {
+    color: var(--safe);
+    font-weight: 600;
+  }
+
+  .accent { color: var(--accent); }
+  .danger { color: var(--danger); }
+  .safe { color: var(--safe); }
+
+  .layer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 0.85rem;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .layer-row input { accent-color: var(--accent); cursor: pointer; }
+
+  /* Vessel / conditions / model controls (Phase 7). */
+  .ctrl-row {
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .ctrl-row:last-child { margin-bottom: 0; }
+
+  .ctrl-label {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    margin-bottom: 5px;
+  }
+
+  .ctrl-select {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 7px 9px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.82rem;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  .ctrl-select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .ctrl-select option { background: var(--bg); color: var(--text); }
+
+  .ctrl-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .ctrl-toggle .ctrl-label { margin-bottom: 0; }
+
+  .ctrl-toggle input { accent-color: var(--accent); cursor: pointer; }
+
+  .ctrl-slider-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 5px;
+  }
+
+  .ctrl-slider-head .ctrl-label { margin-bottom: 0; }
+
+  .ctrl-value {
+    font-size: 0.78rem;
+    color: var(--accent);
+  }
+
+  .ctrl-slider input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  /* Route variants tab strip (Phase 8). */
+  .route-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .route-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.03);
+    font-size: 0.8rem;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.12s, background 0.12s;
+  }
+
+  .route-tab:hover { border-color: rgba(0, 168, 204, 0.5); }
+
+  .route-tab.active {
+    border-color: var(--accent);
+    background: rgba(0, 168, 204, 0.12);
+    color: var(--text);
+  }
+
+  .route-tab-label { font-weight: 500; }
+
+  .route-tab-close {
+    color: var(--text-dim);
+    font-size: 0.95rem;
+    line-height: 1;
+    padding: 0 2px;
+    border-radius: 4px;
+  }
+
+  .route-tab-close:hover { color: var(--danger); }
+
+  .route-add {
+    padding: 5px 10px;
+    border: 1px dashed var(--border);
+    border-radius: 7px;
+    background: transparent;
+    color: var(--accent);
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s;
+  }
+
+  .route-add:hover {
+    border-color: var(--accent);
+    background: rgba(0, 168, 204, 0.08);
+  }
+
+  /* Comparison panel rows. */
+  .cmp-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 7px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+  }
+
+  .cmp-row:last-child { margin-bottom: 0; }
+
+  .cmp-row.active { background: rgba(0, 168, 204, 0.08); }
+
+  .cmp-label {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text);
+    flex: 0 0 auto;
+  }
+
+  .cmp-value {
+    font-size: 0.74rem;
+    color: var(--text-dim);
+    text-align: right;
+  }
+
+  .cmp-row.active .cmp-value { color: var(--accent); }
+
+  /* In-app methodological caveat. */
+  .caveat {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    line-height: 1.5;
+    margin-top: 4px;
+    padding: 10px 2px 4px 2px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Keep Leaflet controls below the sidebar's blur layer. */
+  .leaflet-container { background: var(--bg); }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="map"></div>
+  <aside id="sidebar">
+    <!-- Reagent mounts its root here. The static fallback below is replaced
+         once the app renders. -->
+    <div id="sidebar-root">
+      <h1>🌊 Orca Route Planner</h1>
+      <p class="subtitle">Loading…</p>
+    </div>
+
+    <div class="panel">
+      <h2>Status</h2>
+      <div id="status">Loading data…</div>
+      <div id="status-loaded" style="display:none;"></div>
+    </div>
+  </aside>
+</div>
+
+<!-- CDN scripts (exact versions; order matters) -->
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/scittle@0.6.15/dist/scittle.js" type="application/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/scittle@0.6.15/dist/scittle.reagent.js" type="application/javascript"></script>
+
+<!-- Scittle source (core first, then the app namespace) -->
+<script type="application/x-scittle" src="src/planner_core.cljs"></script>
+<script type="application/x-scittle" src="src/planner_app.cljs"></script>
+
+</body>
+</html>

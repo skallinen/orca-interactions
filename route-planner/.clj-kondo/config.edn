@@ -1,0 +1,14 @@
+;; clj-kondo config for the route-planner ClojureScript core.
+;;
+;; Bug-catching linters stay at defaults; we relax only stylistic ones that
+;; fight this project's conventions, plus one Scittle-specific exception:
+;;   - line-length: relaxed 80 -> 100; numeric/math lines are column-aligned.
+;;   - docstring-no-summary / missing-docstring: docstrings are multi-line
+;;     prose, constants are self-describing.
+;;   - namespace-name-mismatch: OFF. planner_core.cljs deliberately carries the
+;;     dotted ns orca.planner.core but lives at a flat path because Scittle
+;;     loads it by direct <script src=…> URL, not via a classpath.
+{:linters {:line-length {:max-line-length 100}
+           :docstring-no-summary {:level :off}
+           :missing-docstring {:level :off}
+           :namespace-name-mismatch {:level :off}}}
