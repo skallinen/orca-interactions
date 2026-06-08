@@ -479,6 +479,26 @@
      :detail (str "aug(doy227)=" aug " feb(doy46)=" feb
                   " new-errors=" (not no-new-errs?))}))
 
+(defn- check-risk-opacity
+  "The risk-heatmap opacity slider drives the GridLayer opacity. Set it to 0.3
+   via the hook and assert the layer reports 0.3, and that the #risk-opacity
+   slider element exists, with no new console/page errors. Restores 1.0."
+  [{:keys [page console perrors]}]
+  (let [err0 (count (filterv #(= "error" (:type %)) @console))
+        perr0 (count @perrors)
+        opacity (num-of (p-eval page "() => window.__planner.setRiskOpacity(0.3)"))
+        has-slider? (p-eval
+                      page
+                      "() => !!document.getElementById('risk-opacity')")
+        no-new-errs? (and (= err0 (count (filterv #(= "error" (:type %)) @console)))
+                          (= perr0 (count @perrors)))]
+    (p-eval page "() => window.__planner.setRiskOpacity(1.0)")
+    (settle page)
+    {:pass? (boolean (and opacity (< (Math/abs (- opacity 0.3)) 1e-6)
+                          has-slider? no-new-errs?))
+     :detail (str "layer-opacity=" opacity " #risk-opacity present=" has-slider?
+                  " new-errors=" (not no-new-errs?))}))
+
 (def checks
   [{:label "no console/page errors" :check-fn check-no-errors}
    {:label "#status-loaded contains Ready" :check-fn check-status-loaded}
@@ -496,6 +516,8 @@
     :check-fn check-season-shift}
    {:label "#13 incident layers window by month (Aug > Feb)"
     :check-fn check-incident-window}
+   {:label "#14 risk-heatmap opacity slider drives the layer"
+    :check-fn check-risk-opacity}
    {:label "I2.2 delete + move (delete-readd + drag changes risk)"
     :check-fn check-edit-delete-move}
    {:label "I2.3 low-zoom field painted" :check-fn check-low-zoom-field}])

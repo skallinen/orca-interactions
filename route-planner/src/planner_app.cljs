@@ -93,6 +93,9 @@
            :risk-heat true
            :incident-points false}))
 
+;; Reactive opacity (0..1) of the live-risk GridLayer, driven by its slider.
+(defonce risk-opacity (r/atom 1.0))
+
 ;; ── DOM status helpers ───────────────────────────────────────────────────────
 
 (defn set-status! [text]
@@ -338,7 +341,7 @@
                               (let [canvas (.createElement js/document "canvas")]
                                 (paint-risk-tile! m canvas coords)
                                 canvas))})]
-    (new klass #js {:opacity 1.0 :pane "overlayPane"})))
+    (new klass #js {:opacity @risk-opacity :pane "overlayPane"})))
 
 ;; Historical incidents are shown for the selected month +/- this many days, so
 ;; the empirical layer tracks the season the route is planned for (the modelled
@@ -388,6 +391,14 @@
       (if on?
         (when-not (.hasLayer m layer) (.addTo layer m))
         (when (.hasLayer m layer) (.removeLayer m layer))))))
+
+(defn set-risk-opacity!
+  "Set the live-risk GridLayer opacity (0..1), applied to the layer immediately
+   and remembered so a later rebuild keeps it."
+  [o]
+  (reset! risk-opacity o)
+  (when-let [l @risk-heat-layer]
+    (.setOpacity l o)))
 
 (defn- rebuild-incident-layers!
   "Rebuild the historical-incident heatmap + points from the current month
@@ -811,6 +822,9 @@
              :setDoy         (fn [doy] (set-param! "passage" "doy" doy)
                                (:doy @passage-params))
              :incidentCount  (fn [] (count (incidents-in-window)))
+             :setRiskOpacity (fn [o] (set-risk-opacity! o)
+                               (when-let [l @risk-heat-layer]
+                                 (.. l -options -opacity)))
              :routeMedian    (fn [] (if @route-summary
                                       (:median @route-summary)
                                       -1))
@@ -857,11 +871,26 @@
                              (set-layer-visible! k next-on?)))}]
      [:span label]]))
 
+(defn- risk-opacity-row
+  "Opacity slider (0..1) for the live-risk heatmap; applied immediately."
+  []
+  (let [o @risk-opacity]
+    [:div.ctrl-row.ctrl-slider
+     [:div.ctrl-slider-head
+      [:span.ctrl-label "Risk heatmap opacity"]
+      [:span.ctrl-value.mono (str (.toFixed (* 100.0 o) 0) "%")]]
+     [:input {:type "range" :min 0 :max 1 :step 0.05 :value o
+              :id "risk-opacity"
+              :on-change (fn [e]
+                           (set-risk-opacity!
+                             (js/parseFloat (.. e -target -value))))}]]))
+
 (defn layer-controls []
   [:div
    (for [[k label] layer-rows]
      ^{:key (name k)}
-     [layer-toggle k label])])
+     [layer-toggle k label])
+   [risk-opacity-row]])
 
 (defn- pct-str [x]
   (str (.toFixed (* 100.0 x) 2) "%"))
