@@ -11,7 +11,7 @@ parameters {
 }
 model {
   b0 ~ normal(0, 5);
-  tau ~ normal(0, 1) T[0, ];
+  tau ~ normal(0, 0.4) T[0, ];
   w ~ normal(0, tau);
   y ~ bernoulli_logit(b0 + Bsp * w);
 }

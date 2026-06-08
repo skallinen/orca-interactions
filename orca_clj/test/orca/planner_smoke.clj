@@ -31,8 +31,8 @@
   [dir port]
   (let [root (-> (Path/of dir (into-array String [])) .toAbsolutePath .normalize)
         srv  (SimpleFileServer/createFileServer
-              (InetSocketAddress. "127.0.0.1" (int port))
-              root SimpleFileServer$OutputLevel/NONE)]
+               (InetSocketAddress. "127.0.0.1" (int port))
+               root SimpleFileServer$OutputLevel/NONE)]
     (.start srv)
     srv))
 

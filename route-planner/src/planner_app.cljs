@@ -38,6 +38,7 @@
   (r/atom {:wind 1
            :sea 0
            :daylight "Average"
+           :doy 232
            :base-rate 0.025
            :ref-nm 100
            :seg-step-nm 25}))
@@ -155,7 +156,7 @@
             (reveal-loaded! "Ready")
             (js/console.log
               (str "orca planner: loaded "
-                   (count (:draws posterior)) " draws, "
+                   (:n_draws posterior) " draws, "
                    (count @incidents) " incidents, "
                    (count (get grid "cells")) " sea cells"))
             (init-map!))))
@@ -179,17 +180,27 @@
 
 (defn- build-static-cells!
   "Sub-sample the geo grid (~every 3rd cell per axis ≈ 0.3°) and precompute the
-   per-cell static logit part S once. Stores [{:lat :lon :S} …] in static-cells."
-  [cfg md grid]
-  (let [cells (get grid "cells")
-        out   (transient [])]
+   per-cell location+season static part once. Each entry's :S is the
+   {:rr :static-mult :scale} map from core/heatmap-static, which depends on the
+   cell lat/lon, the cell depth/distance, and the current doy + base-rate +
+   ref-nm. Rebuild when doy/base-rate/ref-nm change. Stores [{:lat :lon :S} …]."
+  [cfg grid]
+  (let [mean-sd   (core/mean-spatial-draw cfg)
+        mean-attr (core/mean-attr-draw cfg)
+        pass      @passage-params
+        doy       (:doy pass)
+        base-rate (:base-rate pass)
+        ref-nm    (:ref-nm pass)
+        cells     (get grid "cells")
+        out       (transient [])]
     (doseq [[k v] cells]
       (let [[lat lon] (parse-cell-key k)
             ;; sub-sample on the 0.1° integer indices: keep every 3rd in each axis
             li (js/Math.round (* lat 10.0))
             oi (js/Math.round (* lon 10.0))]
         (when (and (zero? (mod li 3)) (zero? (mod oi 3)))
-          (let [s (core/heatmap-static cfg md lat lon (get v "d") (get v "c"))]
+          (let [s (core/heatmap-static cfg mean-sd mean-attr lat lon doy
+                                       (get v "d") (get v "c") base-rate ref-nm)]
             (conj! out {:lat lat :lon lon :S s})))))
     (reset! static-cells (persistent! out))
     (count @static-cells)))
@@ -244,17 +255,18 @@
 
 (defn- recompute-cell-intensities!
   "Recompute the per-cell intensity array from the precomputed statics plus a
-   freshly-computed dynamic scalar D. Cheap: S is NEVER recomputed here — only D
-   (one scalar) and one sigmoid per cell (§2.5)."
+   freshly-computed dynamic vessel scalar. Cheap: the per-cell location+season
+   static part is NEVER recomputed here — only the one dynamic scalar (the rest
+   of attr_mult + daylight) and one combine per cell (§2.5)."
   []
   (when (and @posterior-data (seq @static-cells))
-    (let [cfg (core/derive-config @posterior-data)
-          md  (core/mean-draw (:draws @posterior-data))
-          d   (core/dynamic-scalar cfg md @boat-params @passage-params)
-          day (:daylight @passage-params)
-          out (js/Array. (count @static-cells))]
+    (let [cfg       (core/derive-config @posterior-data)
+          mean-attr (core/mean-attr-draw cfg)
+          d         (core/dynamic-scalar cfg mean-attr @boat-params
+                                         @passage-params)
+          out       (js/Array. (count @static-cells))]
       (reduce (fn [i {:keys [S]}]
-                (aset out i (core/heatmap-intensity d S day))
+                (aset out i (core/heatmap-intensity d S))
                 (inc i))
               0 @static-cells)
       (reset! cell-intensities out))))
@@ -350,7 +362,6 @@
   (when (and (not @map-ready?)
              @posterior-data @geo-grid (js/document.getElementById "map"))
     (let [cfg (core/derive-config @posterior-data)
-          md  (core/mean-draw (:draws @posterior-data))
           m   (js/L.map "map" #js {:center #js [37.5 -7.5] :zoom 5})]
       (-> (js/L.tileLayer
             "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -361,7 +372,7 @@
                  :subdomains "abcd" :maxZoom 19})
           (.addTo m))
       (reset! map-ref m)
-      (let [n (build-static-cells! cfg md @geo-grid)]
+      (let [n (build-static-cells! cfg @geo-grid)]
         (js/console.log (str "orca planner: precomputed " n " static cells")))
       (recompute-cell-intensities!)
       (reset! incident-heat-layer (make-incident-heat-layer))
@@ -553,22 +564,26 @@
   (draw-waypoint-markers!)
   (let [pts   (active-points)
         cfg   (when @posterior-data (core/derive-config @posterior-data))
-        draws (:draws @posterior-data)
         boat  @boat-params
         pass  @passage-params
+        doy   (:doy pass)
+        base  (:base-rate pass)
         ref   (:ref-nm pass)
         segs  (if (>= (count pts) 2) (build-segments pts) [])]
     (if (and cfg (seq segs))
       (let [summaries (mapv
                         (fn [{:keys [lat lon depth-ord distance-ord nm]}]
-                          (core/segment-risk cfg draws lat lon depth-ord
-                                             distance-ord boat pass nm ref))
+                          (core/segment-risk cfg lat lon doy boat
+                                             (assoc pass
+                                                    :depth-ord depth-ord
+                                                    :distance-ord distance-ord)
+                                             nm base ref))
                         segs)
-            route (core/route-risk cfg draws boat pass
+            route (core/route-risk cfg boat pass
                                    (mapv #(select-keys % [:lat :lon :depth-ord
                                                           :distance-ord :nm])
                                          segs)
-                                   ref)]
+                                   doy base ref)]
         (reset! segment-summaries summaries)
         (reset! route-summary route)
         (draw-segments! segs summaries))
@@ -607,17 +622,18 @@
   "Whole-route {:median :lo89 :hi89} for the waypoints `pts`, or nil if <2."
   [pts]
   (let [cfg   (when @posterior-data (core/derive-config @posterior-data))
-        draws (:draws @posterior-data)
         boat  @boat-params
         pass  @passage-params
+        doy   (:doy pass)
+        base  (:base-rate pass)
         ref   (:ref-nm pass)
         segs  (if (>= (count pts) 2) (build-segments pts) [])]
     (when (and cfg (seq segs))
-      (core/route-risk cfg draws boat pass
+      (core/route-risk cfg boat pass
                        (mapv #(select-keys % [:lat :lon :depth-ord
                                               :distance-ord :nm])
                              segs)
-                       ref))))
+                       doy base ref))))
 
 (defn refresh-comparison!
   "Recompute every route's whole-route summary for the comparison panel."
@@ -660,24 +676,46 @@
       (reset! active-route new-active)
       (refresh-route!))))
 
+(defn rebuild-static-cells!
+  "Rebuild the per-cell location+season static part (the field drifts with doy and
+   is scaled by base-rate/ref-nm), then re-tint and redraw the field GridLayer.
+   Called when doy / base-rate / ref-nm change."
+  []
+  (when (and @posterior-data @geo-grid @map-ready?)
+    (build-static-cells! (core/derive-config @posterior-data) @geo-grid))
+  (refresh-risk-heat!))
+
+;; Passage keys whose change drifts/rescales the field, so static-cells must be
+;; rebuilt (not just the cheap dynamic-scalar re-tint).
+(def ^:private static-rebuild-keys #{:doy :base-rate :ref-nm})
+
 (defn recompute!
-  "Recompute the dynamic scalar D (re-tinting the heatmap from the precomputed
-   static-cells, never recomputing S) and the route / per-segment risk."
+  "Recompute the dynamic vessel scalar (re-tinting the heatmap from the
+   precomputed static-cells) and the route / per-segment risk."
   []
   (refresh-risk-heat!)
+  (refresh-route!))
+
+(defn recompute-static!
+  "Rebuild the static-cells (doy/base-rate/ref-nm changed) then recompute route."
+  []
+  (rebuild-static-cells!)
   (refresh-route!))
 
 (defn set-param!
   "Store a boat/passage param then recompute heatmap + route (test hook +
    Phase 7). Both the bound sidebar control and the programmatic test hook flow
-   through here, so the <select>/slider value and the atom stay consistent."
+   through here, so the <select>/slider value and the atom stay consistent.
+   Changes to doy/base-rate/ref-nm rebuild the season-static cells."
   [group k v]
   (let [kw (keyword k)]
     (case group
       "boat" (swap! boat-params assoc kw v)
       "passage" (swap! passage-params assoc kw v)
       nil)
-    (recompute!)))
+    (if (and (= group "passage") (contains? static-rebuild-keys kw))
+      (recompute-static!)
+      (recompute!))))
 
 ;; ── Debounced slider commits (Phase 7.2) ─────────────────────────────────────
 ;;
@@ -699,8 +737,12 @@
       nil)
     (when-let [t (get @debounce-timers dk)]
       (js/clearTimeout t))
-    (swap! debounce-timers assoc dk
-           (js/setTimeout (fn [] (recompute!)) debounce-ms))))
+    (let [recompute-fn (if (and (= group "passage")
+                                (contains? static-rebuild-keys kw))
+                         recompute-static!
+                         recompute!)]
+      (swap! debounce-timers assoc dk
+             (js/setTimeout (fn [] (recompute-fn)) debounce-ms)))))
 
 (defn install-test-hooks!
   "Expose window.__planner so headless drivers exercise the real code paths."
@@ -715,9 +757,15 @@
              :waypointCount  (fn [] (count (active-points)))
              :clearRoute     (fn [] (clear-route!) 0)
              :setParam       (fn [g k v] (set-param! g k v) true)
+             :setDoy         (fn [doy] (set-param! "passage" "doy" doy)
+                               (:doy @passage-params))
              :routeMedian    (fn [] (if @route-summary
                                       (:median @route-summary)
                                       -1))
+             :routeCI        (fn [] (if @route-summary
+                                      #js {:lo (:lo89 @route-summary)
+                                           :hi (:hi89 @route-summary)}
+                                      nil))
              :addRoute       (fn [] (add-route!))
              :routeCount     (fn [] (count @routes))
              :selectRoute    (fn [i] (select-route! i)
@@ -735,7 +783,7 @@
         g @geo-grid]
     (when (and p g)
       [:div
-       [:div.num (str (count (:draws p)) " posterior draws")]
+       [:div.num (str (:n_draws p) " posterior draws")]
        [:div.num (str (count @incidents) " incidents")]
        [:div.num (str (count (get g "cells")) " sea cells")]])))
 
@@ -804,19 +852,6 @@
     (for [opt options]
       ^{:key opt} [:option {:value opt} opt])]])
 
-(defn- toggle-row
-  "A labelled checkbox bound to a 0/1 boat/passage key."
-  [label group k current]
-  (let [id (str "ctrl-" (name group) "-" (name k))]
-    [:label.ctrl-row.ctrl-toggle {:for id}
-     [:span.ctrl-label label]
-     [:input {:type "checkbox"
-              :id id
-              :checked (= 1 current)
-              :on-change (fn [e]
-                           (set-param! group (name k)
-                                       (if (.. e -target -checked) 1 0)))}]]))
-
 (defn- int-slider-row
   "An integer range slider bound to `group`/`k`, with an ordinal band caption.
    Stores immediately and debounces the heavy recompute per control."
@@ -873,14 +908,50 @@
       (category-options :rudder)]
      [select-row "Mode" "boat" :sailing (:sailing b)
       (category-options :sailing_mode)]
-     [toggle-row "Autopilot" "boat" :autopilot (:autopilot b)]
+     ;; Autopilot kept visible but disabled: the rebuilt presence-effort model has
+     ;; no autopilot predictor (the incident reports lack the field), so toggling
+     ;; it would not change risk. Shown disabled with a note rather than removed.
+     [:label.ctrl-row.ctrl-toggle {:title "Not a predictor in the rebuilt model"}
+      [:span.ctrl-label "Autopilot"]
+      [:input {:type "checkbox" :disabled true :checked false}]
+      [:span.subtitle {:style {:margin-left "6px"}}
+       "(not a predictor in the rebuilt model)"]]
      [int-slider-row "Speed" "boat" :speed (:speed b) 0 3 speed-bands]
      [int-slider-row "Length" "boat" :length (:length b) 0 3 length-bands]]))
+
+;; Month -> representative day-of-year (mid-month). The spatial field drifts with
+;; doy, so choosing a month re-seasons the heatmap and the route numbers.
+(def ^:private month-doy
+  [["January" 15] ["February" 46] ["March" 74] ["April" 105]
+   ["May" 135] ["June" 166] ["July" 196] ["August" 232]
+   ["September" 258] ["October" 288] ["November" 319] ["December" 349]])
+
+(defn- doy->month-name
+  "Nearest month label for a day-of-year (for showing the current selection)."
+  [doy]
+  (->> month-doy
+       (apply min-key (fn [[_ d]] (js/Math.abs (- d doy))))
+       first))
+
+(defn- month-row
+  "Month <select> bound to passage :doy; commits the mid-month doy via set-param!."
+  [current-doy]
+  [:label.ctrl-row
+   [:span.ctrl-label "Month"]
+   [:select.ctrl-select
+    {:value (doy->month-name current-doy)
+     :on-change (fn [e]
+                  (let [nm (.. e -target -value)
+                        doy (second (first (filter #(= nm (first %)) month-doy)))]
+                    (set-param! "passage" "doy" doy)))}
+    (for [[nm _] month-doy]
+      ^{:key nm} [:option {:value nm} nm])]])
 
 (defn conditions-controls []
   (let [p @passage-params]
     [:div.panel
      [:h2 "Conditions"]
+     [month-row (:doy p)]
      [select-row "Time of day" "passage" :daylight (:daylight p)
       ["Day" "Night" "Average"]]
      [int-slider-row "Wind" "passage" :wind (:wind p) 0 3 wind-bands]
@@ -963,17 +1034,22 @@
                "— draw a route")]])))]))
 
 (defn caveat-note
-  "Muted methodological caveat; interpolates the live reference passage length."
+  "Muted methodological caveat for the presence-effort-seasonal model;
+   interpolates the live reference passage length."
   []
   (let [ref (:ref-nm @passage-params)]
     [:div#caveat.caveat
-     (str "Risk is relative to a " ref " nm reference passage (not an "
-          "independently calibrated absolute probability). The spatial term "
-          "shows where incidents concentrate (Strait of Gibraltar, "
-          "Galician/Portuguese coast) beyond depth/distance; near those "
-          "hotspots risk saturates. The heatmap colour is a posterior-mean "
-          "point estimate; the route numbers carry the full 89% credible "
-          "interval.")]))
+     (str "Risk is the probability of at least one interaction over the whole "
+          "route, accumulated as a Poisson hazard along its length. The spatial "
+          "term is a bounded, season-drifting occupancy field — a relative risk "
+          "with mean about 1 over sailed waters, so hotspots are elevated but "
+          "never run away. The absolute level is anchored to a base-rate over a "
+          ref " nm reference passage (not an independently calibrated absolute "
+          "probability). The heatmap colour is a posterior-mean point estimate, "
+          "while the route numbers carry the full 89% credible interval. The "
+          "seasonal hotspot follows the pod's known north-south tuna-following "
+          "cycle (Strait of Gibraltar in winter, Galician/Portuguese coast in "
+          "summer).")]))
 
 (defn sidebar-root []
   [:div

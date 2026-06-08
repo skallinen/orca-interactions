@@ -34,6 +34,9 @@
   :planner-smoke {:extra-paths ["test"]
                   :extra-deps {com.microsoft.playwright/playwright {:mvn/version "1.60.0"}}
                   :exec-fn orca.planner-smoke/run}
+  ;; Route-risk model rebuild (phase M3): fit Parts A+B, export, run gates.
+  ;;   export CMDSTAN=$HOME/.cache/orca-cmdstan; clojure -X:planner-fit
+  :planner-fit {:exec-fn orca.planner-fit/run-fit!}
   ;; Headless-browser test of the route-planner app shell + data load:
   ;;   clojure -X:app-smoke
   :app-smoke {:extra-paths ["test"]

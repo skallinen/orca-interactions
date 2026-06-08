@@ -40,100 +40,50 @@
               (str "CORE TESTS FAIL: " (first @failures)))
         (js/console.error (str "CORE TESTS FAIL: " (first @failures))))))
 
-;; ── King-Zeng reconstructed inline (parity reference) ───────────────────────
-
-(defn ref-king-zeng [sample-rate base-rate]
-  (- (js/Math.log (/ base-rate (- 1.0 base-rate)))
-     (js/Math.log (/ sample-rate (- 1.0 sample-rate)))))
-
-(defn ref-standardize [std jk raw]
-  (let [m (get-in std [jk :mean]) s (get-in std [jk :sd])]
-    (/ (- raw m) s)))
-
-;; Reconstruct the published calculator's pre-sigmoid logit from raw JSON,
-;; independent of planner_core, for the parity assert.
-(defn ref-logit [data draw depth-ord distance-ord boat passage]
-  (let [std (:standardization data)
-        cats (:categories data)
-        layout (:layout data)
-        index-of (fn [coll x]
-                   (or (first (keep-indexed (fn [i v] (when (= v x) i)) coll))
-                       -1))
-        idx (fn [pfx cat-key nm]
-              ;; find layout index whose name is pfx_<offset> where the
-              ;; category list at offset equals nm.
-              (let [levels (get cats cat-key)
-                    off (index-of levels nm)
-                    target (str pfx "_" off)]
-                (index-of layout target)))]
-    (+ (nth draw 0)
-       (* (nth draw 1) (ref-standardize std :depth_ord depth-ord))
-       (* (nth draw 2) (:autopilot boat))
-       (* (nth draw 3) (ref-standardize std :speed_ord (:speed boat)))
-       (* (nth draw 4) (ref-standardize std :boat_length_ord (:length boat)))
-       (* (nth draw 5) (ref-standardize std :distance_ord distance-ord))
-       (* (nth draw 6) (ref-standardize std :wind_ord (:wind passage)))
-       (* (nth draw 7) (ref-standardize std :sea_state_ord (:sea passage)))
-       (nth draw (idx "s" :sailing_mode (:sailing boat)))
-       (nth draw (idx "a" :antifoul (:antifoul boat)))
-       (nth draw (idx "h" :hull_colour (:hull boat)))
-       (nth draw (idx "r" :rudder (:rudder boat)))
-       (ref-king-zeng (:sample_rate data) (:base-rate passage)))))
-
 ;; ── Run all tests once the JSON is fetched ──────────────────────────────────
+;;
+;; These exercise the presence-effort-seasonal core (see POSTERIOR_SCHEMA.md).
+;; The old "base-logit parity vs blog calculator" assert is gone: the rebuilt
+;; model has no single additive logit to compare against.
 
 (defn run-tests [data]
   (try
     (let [cfg   (c/derive-config data)
-          draws (:draws data)
           ;; fixed example params
-          boat    {:autopilot 0 :speed 2 :length 1
+          boat    {:speed 2 :length 1
                    :sailing "Motoring" :antifoul "Black"
                    :hull "White/light" :rudder "Spade"}
-          passage {:wind 1 :sea 0 :daylight "Average" :base-rate 0.025}
-          depth-ord 2 distance-ord 2
-          ;; a point for parity / poisson identity
+          base 0.025 ref-nm 100.0 doy 232
+          ;; passage carries conditions + the per-point depth/distance grid cell
+          passage (fn [dep dist]
+                    {:wind 1 :sea 0 :daylight "Average"
+                     :depth-ord dep :distance-ord dist})
+          pass2 (passage 2 2)
+          ;; a point for the Poisson identity
           lat 36.0 lon -8.0]
 
-      ;; 1a. PARITY: base-logit == reconstructed calculator logit, < 1e-9.
-      (let [max-diff (reduce
-                       (fn [m d]
-                         (let [bl (c/base-logit cfg d depth-ord distance-ord
-                                                boat passage)
-                               rl (ref-logit data d depth-ord distance-ord
-                                             boat passage)]
-                           (max m (js/Math.abs (- bl rl)))))
-                       0.0 draws)]
-        (log-result (< max-diff 1e-9) "parity base-logit vs calculator"
-                    "max-abs-diff=" max-diff))
+      ;; 1. POISSON ROUND-TRIP IDENTITY: a single ref_nm segment ⇒
+      ;;    p = 1 - exp(-h0·ref_nm·RR·attr_mult) per draw. We reconstruct that
+      ;;    per draw from the core primitives and check it matches segment-risk's
+      ;;    median (nm = ref_nm) to < 1e-9.
+      (let [plan (c/point-plan cfg lat lon doy boat pass2 base ref-nm)
+            ps   (mapv (fn [[sdraw beta]]
+                         (let [lam (* (c/plan-hazard-draw cfg plan sdraw beta)
+                                      ref-nm)]
+                           (- 1.0 (js/Math.exp (- lam)))))
+                       (c/draw-pairs cfg))
+            sr   (c/segment-risk cfg lat lon doy boat pass2 ref-nm base ref-nm)
+            med  (c/percentile (vec (sort ps)) 0.50)
+            diff (js/Math.abs (- (:median sr) med))]
+        (log-result (< diff 1e-9) "poisson round-trip identity"
+                    "median-diff=" diff))
 
-      ;; 1b. POISSON ROUND-TRIP: p_seg(ref) == p_transit per draw, < 1e-9, and
-      ;;     segment-risk.median (nm=ref) == median of p_transit.
-      (let [ref-nm 100.0
-            p-transits (mapv #(c/predict-transit-p cfg % lat lon depth-ord
-                                                   distance-ord boat passage)
-                             draws)
-            ;; per-draw |p_seg(ref) - p_transit|
-            max-id (reduce
-                     (fn [m pt]
-                       (let [lam (- (js/Math.log (- 1.0 pt)))
-                             pseg (- 1.0 (js/Math.exp (- (* lam (/ ref-nm ref-nm)))))]
-                         (max m (js/Math.abs (- pseg pt)))))
-                     0.0 p-transits)
-            sr (c/segment-risk cfg draws lat lon depth-ord distance-ord
-                               boat passage ref-nm ref-nm)
-            sorted-pt (vec (sort p-transits))
-            med-pt (c/percentile sorted-pt 0.50)
-            med-diff (js/Math.abs (- (:median sr) med-pt))]
-        (log-result (and (< max-id 1e-9) (< med-diff 1e-9))
-                    "poisson round-trip identity"
-                    "max|pseg-pt|=" max-id "median-diff=" med-diff))
-
-      ;; 2. CI ORDERING for segment-risk and route-risk.
-      (let [sr (c/segment-risk cfg draws 37.0 -9.0 1 3 boat passage 75.0 100.0)
+      ;; 2. CI ORDERING for segment-risk and route-risk (lo < med < hi).
+      (let [sr (c/segment-risk cfg 37.0 -9.0 doy boat (passage 1 3) 75.0 base
+                               ref-nm)
             segs [{:lat 37.0 :lon -9.0 :depth-ord 1 :distance-ord 3 :nm 75.0}
                   {:lat 36.2 :lon -6.1 :depth-ord 2 :distance-ord 1 :nm 120.0}]
-            rr (c/route-risk cfg draws boat passage segs 100.0)]
+            rr (c/route-risk cfg boat (passage 1 3) segs doy base ref-nm)]
         (log-result (and (< (:lo89 sr) (:median sr)) (< (:median sr) (:hi89 sr)))
                     "segment-risk CI ordering"
                     "lo=" (:lo89 sr) "med=" (:median sr) "hi=" (:hi89 sr))
@@ -144,30 +94,59 @@
       ;; 3. MONOTONE exposure: segment median increases with nm; route median
       ;;    increases when appending a segment.
       (let [pt 37.0 pn -9.0
-            med (fn [nm] (:median (c/segment-risk cfg draws pt pn 1 2 boat
-                                                  passage nm 100.0)))
+            med (fn [nm] (:median (c/segment-risk cfg pt pn doy boat (passage 1 2)
+                                                  nm base ref-nm)))
             m25 (med 25.0) m50 (med 50.0) m100 (med 100.0) m200 (med 200.0)
             seg1 [{:lat pt :lon pn :depth-ord 1 :distance-ord 2 :nm 80.0}]
             seg2 (conj seg1 {:lat 36.2 :lon -6.1 :depth-ord 2 :distance-ord 1
                              :nm 90.0})
-            r1 (:median (c/route-risk cfg draws boat passage seg1 100.0))
-            r2 (:median (c/route-risk cfg draws boat passage seg2 100.0))]
+            r1 (:median (c/route-risk cfg boat (passage 1 2) seg1 doy base ref-nm))
+            r2 (:median (c/route-risk cfg boat (passage 1 2) seg2 doy base ref-nm))]
         (log-result (and (< m25 m50) (< m50 m100) (< m100 m200))
                     "segment monotone in nm"
                     "25=" m25 "50=" m50 "100=" m100 "200=" m200)
         (log-result (< r1 r2) "route monotone on append"
                     "1seg=" r1 "2seg=" r2))
 
-      ;; 4. SPATIAL effect: Gibraltar hotspot strictly higher than open ocean,
-      ;;    identical params/depth/distance.
-      (let [med-pt (fn [la lo]
-                     (let [ps (mapv #(c/predict-transit-p cfg % la lo 2 2 boat
-                                                          passage) draws)]
-                       (c/percentile (vec (sort ps)) 0.50)))
-            gib (med-pt 36.0 -5.5)
-            atl (med-pt 38.0 -18.0)]
-        (log-result (> gib atl) "spatial hotspot > open ocean"
-                    "gibraltar=" gib "open-ocean=" atl)))
+      ;; 4. SPATIAL effect: a hotspot strictly higher than the open ocean,
+      ;;    identical params/depth/distance (compare RR medians directly).
+      (let [rr-med (fn [la lo dy]
+                     (let [b (c/spatial-basis cfg la lo dy)
+                           rs (mapv #(c/rr-draw cfg % b) (:spatial-draws cfg))]
+                       (c/percentile (vec (sort rs)) 0.50)))
+            ;; summer Galician hotspot vs deep open Atlantic
+            hot (rr-med 44.0 -9.5 232)
+            atl (rr-med 38.0 -18.0 232)]
+        (log-result (> hot atl) "spatial hotspot > open ocean"
+                    "hotspot=" hot "open-ocean=" atl))
+
+      ;; 5. BOUNDED: the RR field has a finite maximum over the grid (it does NOT
+      ;;    run away). Sample RR widely; the max stays modest (well under ~50).
+      (let [rr-med (fn [la lo]
+                     (let [b (c/spatial-basis cfg la lo doy)
+                           rs (mapv #(c/rr-draw cfg % b) (:spatial-draws cfg))]
+                       (c/percentile (vec (sort rs)) 0.50)))
+            samples (for [la (range 28 49 2) lo (range -19 1 2)]
+                      (rr-med la lo))
+            mx (reduce max 0.0 samples)]
+        (log-result (< mx 50.0) "spatial field bounded (finite max)"
+                    "max-RR=" mx))
+
+      ;; 6. SEASONAL: a Gibraltar point's RR is higher in winter (doy 50) than
+      ;;    summer (doy 232); a Galician point is the reverse (the hotspot moves
+      ;;    north as the pod follows the tuna).
+      (let [rr-med (fn [la lo dy]
+                     (let [b (c/spatial-basis cfg la lo dy)
+                           rs (mapv #(c/rr-draw cfg % b) (:spatial-draws cfg))]
+                       (c/percentile (vec (sort rs)) 0.50)))
+            gib-w (rr-med 36.0 -5.5 50)
+            gib-s (rr-med 36.0 -5.5 232)
+            gal-w (rr-med 44.0 -9.5 50)
+            gal-s (rr-med 44.0 -9.5 232)]
+        (log-result (> gib-w gib-s) "seasonal: Gibraltar winter > summer"
+                    "winter=" gib-w "summer=" gib-s)
+        (log-result (> gal-s gal-w) "seasonal: Galicia summer > winter"
+                    "summer=" gal-s "winter=" gal-w)))
 
     (catch :default e
       (js/console.error (str "EXCEPTION during tests: " e))

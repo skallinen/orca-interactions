@@ -205,6 +205,10 @@
      :detail (str "lo89=" lo " median=" med " hi89=" hi)}))
 
 (defn- check-motor-gt-sail
+  "Mode change moves risk in the FITTED direction. In the rebuilt model the
+   sailing=Motoring beta is positive (mean ≈ +0.85; Sailing is the reference
+   level at 0), so Motoring carries higher risk than Sailing. We assert that
+   fitted direction (Motoring > Sailing) rather than any a-priori assumption."
   [{:keys [page]}]
   (build-mod-route! page)
   (p-eval page "() => window.__planner.setParam('boat','sailing','Motoring')")
@@ -217,7 +221,8 @@
       (p-eval page "() => window.__planner.setParam('boat','sailing','Motoring')")
       (settle page)
       {:pass? (boolean (and m s (> m s)))
-       :detail (str "Motoring=" m " Sailing=" s)})))
+       :detail (str "Motoring=" m " Sailing=" s
+                    " (fitted sailing=Motoring beta > 0 ⇒ Motoring > Sailing)")})))
 
 ;; ── Phase 7 check: predictor change re-tints heatmap + shifts route risk ──────
 
@@ -363,73 +368,94 @@
                         " median " med0 "->" med1 " moved=" move-ok?
                         " new-errors=" (not no-new-errs?))})))))
 
-;; Parity point P=(39.6,-12.3): full-draw spatial offset fbar≈0.064 and, crucially,
-;; the median of sigmoid(base_logit+f) matches sigmoid(base_logit) to ~0.01%.
-(def ^:private parity-P [39.6 -12.3])
+;; ── #10 PRIMARY SANITY GATE: W-Portugal → Gibraltar realistic passage ─────────
+;;
+;; The whole motivation for the model rework (I2.4): this passage used to return
+;; 100% with a degenerate [100,100] CI. The rebuilt presence-effort-seasonal model
+;; must return an order-of-tens-of-percent median with a non-degenerate 89% CI.
 
-(def ^:private parity-calc-js
-  "JS arrow-fn source: fetches the posterior + grid, reconstructs the blog
-   calculator logit (base-30 columns + standardization + King-Zeng) at P with
-   params Motoring / Black / autopilot 0 / daylight Average, and returns the
-   median over draws of sigmoid(base_logit). Mirrors core.base-logit exactly."
-  (str
-    "async () => {"
-    " const [d, grid] = await Promise.all(["
-    "   fetch('posterior_planner.json').then(r=>r.json()),"
-    "   fetch('geo_grid.json').then(r=>r.json())]);"
-    " const layout=d.layout, cats=d.categories, std=d.standardization;"
-    " const sr=d.sample_rate, draws=d.draws;"
-    " const prefix={s:'sailing_mode',a:'antifoul',h:'hull_colour',r:'rudder'};"
-    " const im={};"
-    " layout.forEach((nm,i)=>{ const m=/^([a-z]+)_(\\d+)$/.exec(nm);"
-    "   if(m && prefix[m[1]]){ (im[m[1]]=im[m[1]]||{})[cats[prefix[m[1]]][+m[2]]]=i; } });"
-    " const z=(raw,key)=>{ const s=std[key]; return (raw-s.mean)/s.sd; };"
-    " const sig=x=>1/(1+Math.exp(-x));"
-    " const kz=b=>Math.log(b/(1-b))-Math.log(sr/(1-sr));"
-    " const P=[39.6,-12.3];"
-    " const key=Math.round(P[0]*10)+','+Math.round(P[1]*10);"
-    " const cell=grid.cells[key]; const depth=cell?cell.d:3, dist=cell?cell.c:3;"
-    " const boat={autopilot:0,speed:2,length:1,sailing:'Motoring',"
-    "   antifoul:'Black',hull:'White/light',rudder:'Spade'};"
-    " const pass={wind:1,sea:0,base:0.025};"
-    " const bl=dr=>("
-    "   dr[0] + dr[1]*z(depth,'depth_ord') + dr[5]*z(dist,'distance_ord')"
-    "   + dr[2]*boat.autopilot + dr[3]*z(boat.speed,'speed_ord')"
-    "   + dr[4]*z(boat.length,'boat_length_ord')"
-    "   + dr[6]*z(pass.wind,'wind_ord') + dr[7]*z(pass.sea,'sea_state_ord')"
-    "   + dr[im.s[boat.sailing]] + dr[im.a[boat.antifoul]]"
-    "   + dr[im.h[boat.hull]] + dr[im.r[boat.rudder]] + kz(pass.base));"
-    " const ps=draws.map(dr=>sig(bl(dr))).sort((x,y)=>x-y);"
-    " const n=ps.length; return ps[Math.min(n-1, Math.floor(0.50*n))];"
-    "}"))
+;; W-Portugal → Strait of Gibraltar waypoints, driven via the test hooks.
+(def ^:private wpg-route
+  [[38.70 -9.42] [37.10 -8.67] [36.00 -6.00] [36.14 -5.35]])
 
-(defn- check-parity
-  [{:keys [page]}]
-  ;; A single ~100 nm sub-segment straddling P: seg-step-nm large so the leg
-  ;; stays one segment with its midpoint exactly at P; ref-nm 100; daylight
-  ;; Average; antifoul Black; autopilot 0; Motoring. The Poisson identity then
-  ;; reproduces p_transit per draw, and fbar(P)≈0 ⇒ ≈ sigmoid(base_logit).
+(defn- lay-route!
+  "Clear the active route, set doy + the reference/average vessel, then add `wps`
+   waypoints. We use the model's reference vessel (Sailing, average ordinals) so
+   the sanity band matches the plan's 'average vessel' criterion; Motoring is a
+   riskier non-reference choice exercised separately by check #8."
+  [page wps doy]
   (p-eval page "() => window.__planner.clearRoute()")
   (settle page)
-  (doseq [[g k v] [["passage" "seg-step-nm" 200] ["passage" "ref-nm" 100]
-                   ["passage" "daylight" "Average"] ["boat" "sailing" "Motoring"]
-                   ["boat" "antifoul" "Black"] ["boat" "autopilot" 0]]]
+  (doseq [[g k v] [["boat" "sailing" "Sailing"] ["boat" "antifoul" "Black"]
+                   ["boat" "hull" "White/light"] ["boat" "rudder" "Spade"]
+                   ["boat" "speed" 2] ["boat" "length" 1]
+                   ["passage" "wind" 1] ["passage" "sea" 0]
+                   ["passage" "daylight" "Average"]]]
     (p-eval page (str "() => window.__planner.setParam('" g "','" k "',"
                       (if (string? v) (str "'" v "'") v) ")")))
+  (p-eval page (str "() => window.__planner.setDoy(" doy ")"))
   (settle page)
-  (let [half 0.83333
-        la   (first parity-P)
-        lo   (second parity-P)]
-    (p-eval page (str "() => window.__planner.addWaypoint(" (+ la half) ", " lo ")"))
-    (p-eval page (str "() => window.__planner.addWaypoint(" (- la half) ", " lo ")"))
-    (settle page)
-    (let [app-med  (num-of (p-eval page "() => window.__planner.routeMedian()"))
-          calc-med (num-of (.evaluate page parity-calc-js))
-          rel      (when (and app-med calc-med (pos? calc-med))
-                     (/ (Math/abs (- app-med calc-med)) calc-med))]
-      {:pass? (boolean (and rel (< rel 0.01)))
-       :detail (str "app=" app-med " calc=" calc-med
-                    " rel=" (when rel (format "%.4f%%" (* 100.0 rel))))})))
+  (doseq [[la lo] wps]
+    (p-eval page (str "() => window.__planner.addWaypoint(" la ", " lo ")")))
+  (settle page))
+
+(defn- check-sanity-route
+  "Primary sanity gate: the W-Portugal→Gibraltar route at summer doy=232 with the
+   reference/average vessel returns a median in (0.03, 0.35) and a non-degenerate
+   89% CI (hi - lo > 0.01), with no new console/page errors. The legacy build
+   returned 100% [100,100]; this asserts the rework brought it back to a sane band."
+  [{:keys [page console perrors]}]
+  (let [err0 (count (filterv #(= "error" (:type %)) @console))
+        perr0 (count @perrors)]
+    (lay-route! page wpg-route 232)
+    (let [med (read-id-number page "risk-median")
+          lo  (read-id-number page "ci-lo")
+          hi  (read-id-number page "ci-hi")
+          ;; #id text is a percentage; convert to fraction.
+          medf (when med (/ med 100.0))
+          lof  (when lo (/ lo 100.0))
+          hif  (when hi (/ hi 100.0))
+          ci-width (when (and lof hif) (- hif lof))
+          no-new-errs? (and (= err0 (count (filterv #(= "error" (:type %))
+                                                    @console)))
+                            (= perr0 (count @perrors)))]
+      {:pass? (boolean (and medf (> medf 0.03) (< medf 0.35)
+                            ci-width (> ci-width 0.01) no-new-errs?))
+       :detail (str "median=" med "% CI=[" lo "," hi "]%"
+                    " ci-width=" (when ci-width (format "%.3f" ci-width))
+                    " new-errors=" (not no-new-errs?))})))
+
+(defn- check-open-atlantic
+  "Short open-Atlantic leg (40.0,-15.0)→(40.5,-15.0) at summer doy=232 ⇒ route
+   median < 0.01 (quiet open ocean, far from any hotspot)."
+  [{:keys [page]}]
+  (lay-route! page [[40.0 -15.0] [40.5 -15.0]] 232)
+  (let [med (read-id-number page "risk-median")
+        medf (when med (/ med 100.0))]
+    {:pass? (boolean (and medf (< medf 0.01)))
+     :detail (str "median=" med "% (fraction " medf ")")}))
+
+(defn- check-season-shift
+  "Seasonal check: the W-Portugal→Gibraltar route median in winter (doy=50)
+   DIFFERS meaningfully from summer (doy=232) — the hotspot moves with the pod's
+   north-south cycle. Assert |winter - summer| > 0.05 (5 percentage points), with
+   no new console/page errors."
+  [{:keys [page console perrors]}]
+  (let [err0 (count (filterv #(= "error" (:type %)) @console))
+        perr0 (count @perrors)]
+    (lay-route! page wpg-route 232)
+    (let [summer (read-id-number page "risk-median")]
+      (lay-route! page wpg-route 50)
+      (let [winter (read-id-number page "risk-median")
+            diff (when (and summer winter)
+                   (Math/abs (- (/ winter 100.0) (/ summer 100.0))))
+            no-new-errs? (and (= err0 (count (filterv #(= "error" (:type %))
+                                                      @console)))
+                              (= perr0 (count @perrors)))]
+        {:pass? (boolean (and diff (> diff 0.05) no-new-errs?))
+         :detail (str "summer=" summer "% winter=" winter "%"
+                      " diff=" (when diff (format "%.3f" diff))
+                      " new-errors=" (not no-new-errs?))}))))
 
 (def checks
   [{:label "no console/page errors" :check-fn check-no-errors}
@@ -439,9 +465,13 @@
    {:label "#5 add waypoint increments count" :check-fn check-add-waypoint}
    {:label "#6 segment risk appears" :check-fn check-segment-risk}
    {:label "#7 CI ordering lo<med<hi" :check-fn check-ci-ordering}
-   {:label "#8 Motoring > Sailing" :check-fn check-motor-gt-sail}
+   {:label "#8 Motoring > Sailing (fitted direction)" :check-fn check-motor-gt-sail}
    {:label "#9 add second route via #add-route-btn" :check-fn check-add-route}
-   {:label "#10 parity vs calculator (<1% rel)" :check-fn check-parity}
+   {:label "#10 W-Portugal→Gibraltar sanity (median in band, non-degenerate CI)"
+    :check-fn check-sanity-route}
+   {:label "#11 open-Atlantic route median < 1%" :check-fn check-open-atlantic}
+   {:label "#12 seasonal hotspot moves (winter ≠ summer)"
+    :check-fn check-season-shift}
    {:label "I2.2 delete + move (delete-readd + drag changes risk)"
     :check-fn check-edit-delete-move}
    {:label "I2.3 low-zoom field painted" :check-fn check-low-zoom-field}])
