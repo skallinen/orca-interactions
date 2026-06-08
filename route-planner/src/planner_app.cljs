@@ -106,16 +106,29 @@
 
 ;; ── Data parsing ─────────────────────────────────────────────────────────────
 
+(defn- date->doy
+  "Day-of-year (1-366) from a leading \"YYYY-MM-DD…\" date string, or nil."
+  [s]
+  (when (and (string? s) (>= (count s) 10))
+    (let [y  (js/parseInt (subs s 0 4) 10)
+          mo (js/parseInt (subs s 5 7) 10)
+          d  (js/parseInt (subs s 8 10) 10)]
+      (when-not (or (js/isNaN y) (js/isNaN mo) (js/isNaN d))
+        (inc (js/Math.floor (/ (- (js/Date.UTC y (dec mo) d) (js/Date.UTC y 0 1))
+                               86400000)))))))
+
 (defn parse-incidents
-  "Pull [[lat lon] …] out of reports.incident.<id>.{lat,long}."
+  "Pull [[lat lon doy] …] out of reports.incident.<id>.{lat,long,time}; doy is
+   the day-of-year of the interaction (used to window the layers by month)."
   [report-json]
   (let [incident (get-in report-json ["reports" "incident"])]
     (->> (vals incident)
          (keep (fn [r]
                  (let [lat (get r "lat")
-                       lon (get r "long")]
+                       lon (get r "long")
+                       doy (date->doy (get r "time"))]
                    (when (and (number? lat) (number? lon))
-                     [lat lon]))))
+                     [lat lon doy]))))
          vec)))
 
 ;; ── Data load ────────────────────────────────────────────────────────────────
@@ -327,14 +340,35 @@
                                 canvas))})]
     (new klass #js {:opacity 1.0 :pane "overlayPane"})))
 
+;; Historical incidents are shown for the selected month +/- this many days, so
+;; the empirical layer tracks the season the route is planned for (the modelled
+;; risk field drifts with day-of-year; this keeps the dots in step). Wrap-around
+;; at the year boundary is handled by `circular-doy-dist`.
+(def ^:private incident-window-days 30)
+
+(defn- circular-doy-dist
+  "Smallest day-of-year separation between a and b on the 365-day circle."
+  [a b]
+  (let [d (js/Math.abs (- a b))]
+    (min d (- 365 d))))
+
+(defn- incidents-in-window
+  "@incidents whose day-of-year falls within incident-window-days of the selected
+   month's doy. Incidents with no parseable date (doy nil) are dropped."
+  []
+  (let [sel (:doy @passage-params)]
+    (filterv (fn [[_ _ doy]]
+               (and doy (<= (circular-doy-dist doy sel) incident-window-days)))
+             @incidents)))
+
 (defn- make-incident-heat-layer []
   (js/L.heatLayer
-    (apply array (mapv (fn [[lat lon]] #js [lat lon 1.0]) @incidents))
+    (apply array (mapv (fn [[lat lon]] #js [lat lon 1.0]) (incidents-in-window)))
     #js {:radius 18 :blur 22 :max 1.0 :gradient incident-gradient}))
 
 (defn- make-incident-points-layer []
   (let [grp (js/L.layerGroup)]
-    (doseq [[lat lon] @incidents]
+    (doseq [[lat lon] (incidents-in-window)]
       (.addTo (js/L.circleMarker
                 #js [lat lon]
                 #js {:radius 3 :color "#00a8cc" :weight 1
@@ -354,6 +388,21 @@
       (if on?
         (when-not (.hasLayer m layer) (.addTo layer m))
         (when (.hasLayer m layer) (.removeLayer m layer))))))
+
+(defn- rebuild-incident-layers!
+  "Rebuild the historical-incident heatmap + points from the current month
+   window (the doy changed). Each layer is replaced in place, preserving its
+   current visibility toggle."
+  []
+  (when-let [m @map-ref]
+    (doseq [[k layer-atom maker] [[:incident-heat incident-heat-layer
+                                   make-incident-heat-layer]
+                                  [:incident-points incident-points-layer
+                                   make-incident-points-layer]]]
+      (when-let [old @layer-atom]
+        (when (.hasLayer m old) (.removeLayer m old)))
+      (reset! layer-atom (maker))
+      (when (get @layer-visible k) (.addTo @layer-atom m)))))
 
 (defn init-map!
   "Initialize the Leaflet map and all three layers once data is loaded. Guarded
@@ -714,7 +763,9 @@
       "passage" (swap! passage-params assoc kw v)
       nil)
     (if (and (= group "passage") (contains? static-rebuild-keys kw))
-      (recompute-static!)
+      (do (recompute-static!)
+          ;; the month also re-windows the historical-incident layers.
+          (when (= kw :doy) (rebuild-incident-layers!)))
       (recompute!))))
 
 ;; ── Debounced slider commits (Phase 7.2) ─────────────────────────────────────
@@ -759,6 +810,7 @@
              :setParam       (fn [g k v] (set-param! g k v) true)
              :setDoy         (fn [doy] (set-param! "passage" "doy" doy)
                                (:doy @passage-params))
+             :incidentCount  (fn [] (count (incidents-in-window)))
              :routeMedian    (fn [] (if @route-summary
                                       (:median @route-summary)
                                       -1))
@@ -788,9 +840,9 @@
        [:div.num (str (count (get g "cells")) " sea cells")]])))
 
 (def ^:private layer-rows
-  [[:incident-heat "Historical incidents"]
+  [[:incident-heat "Historical incidents (this month)"]
    [:risk-heat "Live risk heatmap"]
-   [:incident-points "Incident points"]])
+   [:incident-points "Incident points (this month)"]])
 
 (defn- layer-toggle [k label]
   (let [id (str "layer-" (name k))

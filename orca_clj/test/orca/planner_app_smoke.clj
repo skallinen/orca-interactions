@@ -457,6 +457,28 @@
                       " diff=" (when diff (format "%.3f" diff))
                       " new-errors=" (not no-new-errs?))}))))
 
+(defn- check-incident-window
+  "The historical-incident layers are windowed to the selected month +/-30 days.
+   August (doy=227, the incident peak) must show more incidents than February
+   (doy=46, a trough); both must be > 0 and < the full 216, with no new errors."
+  [{:keys [page console perrors]}]
+  (let [err0 (count (filterv #(= "error" (:type %)) @console))
+        perr0 (count @perrors)
+        aug (do (p-eval page "() => window.__planner.setDoy(227)")
+                (settle page)
+                (num-of (p-eval page "() => window.__planner.incidentCount()")))
+        feb (do (p-eval page "() => window.__planner.setDoy(46)")
+                (settle page)
+                (num-of (p-eval page "() => window.__planner.incidentCount()")))
+        no-new-errs? (and (= err0 (count (filterv #(= "error" (:type %)) @console)))
+                          (= perr0 (count @perrors)))]
+    ;; restore the default month so later checks start from a known season.
+    (p-eval page "() => window.__planner.setDoy(232)")
+    (settle page)
+    {:pass? (boolean (and aug feb (> aug feb) (> feb 0) (< aug 216) no-new-errs?))
+     :detail (str "aug(doy227)=" aug " feb(doy46)=" feb
+                  " new-errors=" (not no-new-errs?))}))
+
 (def checks
   [{:label "no console/page errors" :check-fn check-no-errors}
    {:label "#status-loaded contains Ready" :check-fn check-status-loaded}
@@ -472,6 +494,8 @@
    {:label "#11 open-Atlantic route median < 1%" :check-fn check-open-atlantic}
    {:label "#12 seasonal hotspot moves (winter ≠ summer)"
     :check-fn check-season-shift}
+   {:label "#13 incident layers window by month (Aug > Feb)"
+    :check-fn check-incident-window}
    {:label "I2.2 delete + move (delete-readd + drag changes risk)"
     :check-fn check-edit-delete-move}
    {:label "I2.3 low-zoom field painted" :check-fn check-low-zoom-field}])
