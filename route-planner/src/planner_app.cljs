@@ -23,7 +23,10 @@
 (defonce posterior-data (r/atom nil))
 (defonce incidents (r/atom []))
 (defonce geo-grid (r/atom nil))
-(defonce coastline? (r/atom false))
+;; Land rings ([[ [lat lon] … ] …]) for clipping the heatmap to the coastline,
+;; plus a per-zoom cache of those rings projected to CRS pixels (see paint).
+(defonce coastline (r/atom nil))
+(defonce coastline-px (atom {:zoom nil :rings nil}))
 
 (defonce boat-params
   (r/atom {:antifoul "Black"
@@ -153,25 +156,28 @@
       (.then (fn [resp] (.json resp)))))
 
 (defn load-data!
-  "Fetch all three data files; populate the atoms and report Ready only after
-   every fetch has resolved. Errors are logged to the console (Scittle prints
-   there, not to the page)."
+  "Fetch all data files (posterior, reports, geo grid, coastline); populate the
+   atoms and report Ready only after every fetch has resolved. Errors are logged
+   to the console (Scittle prints there, not to the page)."
   []
   (set-status! "Loading data…")
   (-> (js/Promise.all
         #js [(fetch-json "posterior_planner.json")
              (fetch-json "../orca_reportlist.json")
-             (fetch-json "geo_grid.json")])
+             (fetch-json "geo_grid.json")
+             (fetch-json "coastline.json")])
       (.then
         (fn [results]
           (let [posterior (js->clj (aget results 0) :keywordize-keys true)
                 reports   (js->clj (aget results 1) :keywordize-keys false)
                 ;; geo-grid cells must keep STRING keys ("361,-59") for lookup,
                 ;; so do NOT keywordize this one.
-                grid      (js->clj (aget results 2) :keywordize-keys false)]
+                grid      (js->clj (aget results 2) :keywordize-keys false)
+                coast     (js->clj (aget results 3) :keywordize-keys false)]
             (reset! posterior-data posterior)
             (reset! incidents (parse-incidents reports))
             (reset! geo-grid grid)
+            (reset! coastline (get coast "polygons"))
             (set-status! "Ready")
             (reveal-loaded! "Ready")
             (js/console.log
@@ -276,10 +282,12 @@
 ;; yellow→red ramp, so a hotspot is always red and quiet water always green at any
 ;; zoom, with no stripes.
 
-;; Each render cell is one 0.1° sea cell, so paint a 0.1° square centred on it: the
-;; squares exactly tile the sea cells, masking land at the coastline with no bleed.
-(def ^:private cell-deg 0.1)
-(def ^:private cell-half-deg (/ cell-deg 2.0))
+;; The 0.1° intensity lattice (static-cells / cell-index) is the model's mask and
+;; sampling grid. For display we paint a finer pixel sub-grid (`sub-step` px, ≈ a
+;; third of a 0.1° cell at mid zoom) and BILINEARLY sample the lattice, so the field
+;; is smooth between cells and ~3× the cell resolution. The painted field is then
+;; clipped to the real coastline (Natural Earth 10m land) by erasing land pixels.
+(def ^:private sub-step 6)
 
 ;; FIXED display domain for the colour ramp (intensity = sigmoid(D+S)·daylight).
 ;; Quiet offshore water sits ≈0.02–0.05 and hotspots reach ≈0.15+, so we clamp the
@@ -340,14 +348,77 @@
   (when-let [layer @risk-heat-layer]
     (.redraw layer)))
 
+(defn- sample-intensity
+  "Bilinearly sample the 0.1° intensity lattice at fractional integer-tenths
+   (fli,foi), using whichever of the 4 surrounding cells exist (sea). Returns nil
+   when no surrounding cell is sea, so land/void sub-cells are left unpainted."
+  [idx cell-ints fli foi]
+  (let [li0 (js/Math.floor fli)
+        oi0 (js/Math.floor foi)
+        u   (- fli li0)
+        v   (- foi oi0)]
+    (loop [cs [[li0 oi0 (* (- 1.0 u) (- 1.0 v))]
+               [(inc li0) oi0 (* u (- 1.0 v))]
+               [li0 (inc oi0) (* (- 1.0 u) v)]
+               [(inc li0) (inc oi0) (* u v)]]
+           sum 0.0
+           wsum 0.0]
+      (if (empty? cs)
+        (when (pos? wsum) (/ sum wsum))
+        (let [[li oi w] (first cs)
+              i (aget idx (str li "," oi))]
+          (if (and i (pos? w))
+            (recur (rest cs) (+ sum (* w (aget cell-ints i))) (+ wsum w))
+            (recur (rest cs) sum wsum)))))))
+
+(defn- ensure-coastline-px!
+  "Project every coastline land ring to CRS pixels at zoom z (with a pixel bbox per
+   ring for tile culling), cached so a same-zoom re-tint reuses it."
+  [m z]
+  (when (not= z (:zoom @coastline-px))
+    (let [rings (mapv
+                  (fn [ring]
+                    ;; pts is a JS array of #js [x y] so the painter can aget it.
+                    (let [pts (to-array
+                                (map (fn [[lat lon]]
+                                       (let [p (.project m (js/L.latLng lat lon) z)]
+                                         #js [(.-x p) (.-y p)]))
+                                     ring))
+                          xs  (map #(aget % 0) pts)
+                          ys  (map #(aget % 1) pts)]
+                      {:pts pts
+                       :minx (apply min xs) :maxx (apply max xs)
+                       :miny (apply min ys) :maxy (apply max ys)}))
+                  @coastline)]
+      (reset! coastline-px {:zoom z :rings rings}))))
+
+(defn- erase-land!
+  "Clip the painted field to the sea by erasing the land rings from this tile
+   (destination-out makes the filled land pixels transparent)."
+  [ctx m z ox oy]
+  (when (seq @coastline)
+    (ensure-coastline-px! m z)
+    (set! (.-globalCompositeOperation ctx) "destination-out")
+    (set! (.-fillStyle ctx) "rgba(0,0,0,1)")
+    (doseq [{:keys [pts minx maxx miny maxy]} (:rings @coastline-px)]
+      ;; cull rings whose pixel bbox does not overlap this tile's pixel rect.
+      (when (and (< minx (+ ox 256)) (> maxx ox)
+                 (< miny (+ oy 256)) (> maxy oy))
+        (.beginPath ctx)
+        (let [p0 (aget pts 0)]
+          (.moveTo ctx (- (aget p0 0) ox) (- (aget p0 1) oy)))
+        (dotimes [k (dec (alength pts))]
+          (let [p (aget pts (inc k))]
+            (.lineTo ctx (- (aget p 0) ox) (- (aget p 1) oy))))
+        (.closePath ctx)
+        (.fill ctx)))
+    (set! (.-globalCompositeOperation ctx) "source-over")))
+
 (defn- paint-risk-tile!
-  "Paint the risk cells that fall inside one map tile. `coords` carries the tile's
-   z/x/y. We unproject the tile's pixel corners to lat/lon, then iterate only the
-   integer-tenths cells in that range, looking each up in cell-index (O(1)) — so
-   the cost is the cells in the tile, not the whole 0.1° grid."
+  "Paint one map tile: a smooth bilinear raster of the risk field on a pixel
+   sub-grid, then clipped to the coastline by erasing land. `coords` carries the
+   tile's z/x/y; Leaflet tiles are 256 px square."
   [m canvas coords]
-  ;; Leaflet's default tile size is 256 px square; tile (x,y) at zoom z covers the
-  ;; CRS pixel square [x*256,(x+1)*256] × [y*256,(y+1)*256].
   (let [ctx  (.getContext canvas "2d")
         z    (.-z coords)
         tw   256
@@ -359,27 +430,26 @@
         ;; tile geographic bounds (nw = top-left = max lat / min lon).
         nw   (.unproject m (js/L.point ox oy) z)
         se   (.unproject m (js/L.point (+ ox tw) (+ oy th)) z)
-        li-lo (dec (js/Math.round (* (.-lat se) 10.0)))
-        li-hi (inc (js/Math.round (* (.-lat nw) 10.0)))
-        oi-lo (dec (js/Math.round (* (.-lng nw) 10.0)))
-        oi-hi (inc (js/Math.round (* (.-lng se) 10.0)))]
+        nw-lat (.-lat nw) se-lat (.-lat se)
+        nw-lng (.-lng nw) se-lng (.-lng se)
+        half (/ sub-step 2.0)]
     (set! (.-width canvas) tw)
     (set! (.-height canvas) th)
-    (doseq [li (range li-lo (inc li-hi))
-            oi (range oi-lo (inc oi-hi))]
-      (when-let [i (aget idx (str li "," oi))]
-        (let [lat (/ li 10.0)
-              lon (/ oi 10.0)
-              p1  (.project m (js/L.latLng (+ lat cell-half-deg)
-                                           (- lon cell-half-deg)) z)
-              p2  (.project m (js/L.latLng (- lat cell-half-deg)
-                                           (+ lon cell-half-deg)) z)
-              x1  (- (.-x p1) ox)
-              y1  (- (.-y p1) oy)
-              w   (js/Math.ceil (- (.-x p2) (.-x p1)))
-              h   (js/Math.ceil (- (.-y p2) (.-y p1)))]
-          (set! (.-fillStyle ctx) (intensity->rgba (aget cell-ints i)))
-          (.fillRect ctx x1 y1 w h))))))
+    ;; 1. smooth field: bilinearly sample the lattice on a pixel sub-grid.
+    (loop [py 0]
+      (when (< py th)
+        (loop [px 0]
+          (when (< px tw)
+            (let [lon (lerp nw-lng se-lng (/ (+ px half) tw))
+                  lat (lerp nw-lat se-lat (/ (+ py half) th))
+                  iv  (sample-intensity idx cell-ints (* lat 10.0) (* lon 10.0))]
+              (when iv
+                (set! (.-fillStyle ctx) (intensity->rgba iv))
+                (.fillRect ctx px py sub-step sub-step)))
+            (recur (+ px sub-step))))
+        (recur (+ py sub-step))))
+    ;; 2. clip to the coastline.
+    (erase-land! ctx m z ox oy)))
 
 (defn- make-risk-field-layer
   "A custom Canvas L.GridLayer that rasterizes the risk field per map tile."
@@ -876,6 +946,7 @@
                                (:doy @passage-params))
              :incidentCount  (fn [] (count (incidents-in-window)))
              :staticCellCount (fn [] (count @static-cells))
+             :coastlineRings (fn [] (count @coastline))
              :routeDistance  (fn [] (if @route-summary (:nm @route-summary) -1))
              :setRiskOpacity (fn [o] (set-risk-opacity! o)
                                (when-let [l @risk-heat-layer]

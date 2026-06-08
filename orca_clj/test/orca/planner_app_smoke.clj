@@ -508,6 +508,14 @@
     {:pass? (boolean (and n (> n 25000) (<= n 34933)))
      :detail (str "static-cells=" n)}))
 
+(defn- check-coastline-clip
+  "The coastline land rings load (so the heatmap can be clipped to the sea); the
+   field renderer paints with no console errors (covered by the heat-canvas check)."
+  [{:keys [page]}]
+  (let [n (num-of (p-eval page "() => window.__planner.coastlineRings()"))]
+    {:pass? (boolean (and n (> n 10)))
+     :detail (str "coastline-rings=" n)}))
+
 (defn- check-route-distance
   "The selected track's length is reported in nautical miles. A 1 deg latitude
    leg (36,-5)->(37,-5) is 60 nm by definition, so routeDistance ~= 60 and the
@@ -545,6 +553,8 @@
     :check-fn check-render-resolution}
    {:label "#16 selected track shows distance in nm"
     :check-fn check-route-distance}
+   {:label "#17 coastline land rings load (heatmap clip)"
+    :check-fn check-coastline-clip}
    {:label "I2.2 delete + move (delete-readd + drag changes risk)"
     :check-fn check-edit-delete-move}
    {:label "I2.3 low-zoom field painted" :check-fn check-low-zoom-field}])
