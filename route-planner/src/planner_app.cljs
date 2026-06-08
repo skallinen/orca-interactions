@@ -42,7 +42,7 @@
            :sea 0
            :daylight "Average"
            :doy 232
-           :base-rate 0.008
+           :base-rate 0.00315
            :ref-nm 100
            :seg-step-nm 25}))
 
@@ -284,7 +284,7 @@
                           (assoc! m k (core/heatmap-static
                                        cfg mean-sd mean-attr
                                        (/ li 10.0) (/ oi 10.0) doy
-                                       (get v "d") (get v "c") base-rate ref-nm))
+                                       (get v "m") (get v "c") base-rate ref-nm))
                           m)))
                     (transient {})
                     cells))
@@ -627,18 +627,20 @@
   (swap! routes assoc-in [@active-route :points] (vec pts)))
 
 (defn geo-lookup
-  "Look up {:depth_ord :distance_ord} for (lat,lon) in the sea-cell grid.
-   Falls back to the nearest neighbour within ±3 cells, else {3 3}."
+  "Look up {:m :distance_ord} for (lat,lon) in the sea-cell grid: continuous
+   seafloor depth `m` (metres, +down) and the distance-from-coast ordinal `c`.
+   Falls back to the nearest neighbour within ±3 cells; off-grid (open ocean far
+   from any cell) defaults to a deep abyssal depth (4000 m) and far distance (3)."
   [lat lon]
   (let [cells (get @geo-grid "cells")
         li    (js/Math.round (* lat 10.0))
         oi    (js/Math.round (* lon 10.0))
         cell-at (fn [a b] (get cells (str a "," b)))]
     (if-let [c (cell-at li oi)]
-      {:depth_ord (int (get c "d")) :distance_ord (int (get c "c"))}
+      {:m (get c "m") :distance_ord (int (get c "c"))}
       (loop [rad 1]
         (if (> rad 3)
-          {:depth_ord 3 :distance_ord 3}
+          {:m 4000 :distance_ord 3}
           (let [hit (first
                      (for [da (range (- rad) (inc rad))
                            db (range (- rad) (inc rad))
@@ -646,13 +648,14 @@
                            :when c]
                        c))]
             (if hit
-              {:depth_ord (int (get hit "d")) :distance_ord (int (get hit "c"))}
+              {:m (get hit "m") :distance_ord (int (get hit "c"))}
               (recur (inc rad)))))))))
 
 (defn build-segments
   "Subdivide each consecutive waypoint pair of `pts` into sub-segments of about
-   `seg-step-nm`, returning a vector of {:lat :lon :depth-ord :distance-ord :nm
-   :a :b} where [:a :b] are the polyline endpoints for drawing."
+   `seg-step-nm`, returning a vector of {:lat :lon :depth-m :distance-ord :nm
+   :a :b} where [:a :b] are the polyline endpoints for drawing. :depth-m is the
+   continuous seafloor depth at the sub-segment midpoint (feeds the spatial RR)."
   [pts]
   (let [step (:seg-step-nm @passage-params)]
     (vec
@@ -671,9 +674,9 @@
                   blon (+ lon1 (* (- lon2 lon1) t1))
                   mlat (+ lat1 (* (- lat2 lat1) tm))
                   mlon (+ lon1 (* (- lon2 lon1) tm))
-                  {:keys [depth_ord distance_ord]} (geo-lookup mlat mlon)]
+                  {:keys [m distance_ord]} (geo-lookup mlat mlon)]
               {:lat mlat :lon mlon
-               :depth-ord depth_ord :distance-ord distance_ord
+               :depth-m m :distance-ord distance_ord
                :nm per-nm
                :a [alat alon] :b [blat blon]}))))
       (partition 2 1 pts)))))
@@ -747,12 +750,12 @@
                   mk))
               (active-points))))))
 
-(defn- seg-tooltip [idx {:keys [depth-ord distance-ord]} {:keys [median lo89 hi89]}]
+(defn- seg-tooltip [idx {:keys [depth-m distance-ord]} {:keys [median lo89 hi89]}]
   (str "Seg " (inc idx) " — "
        (.toFixed (* 100.0 median) 1) "% ["
        (.toFixed (* 100.0 lo89) 1) "–"
        (.toFixed (* 100.0 hi89) 1) "% 89%CI]  "
-       "Depth " depth-ord "  Dist " distance-ord))
+       "Depth " (when depth-m (js/Math.round depth-m)) "m  Dist " distance-ord))
 
 (defn- draw-segments! [segs summaries]
   (when-let [m @map-ref]
@@ -788,15 +791,15 @@
         segs  (if (>= (count pts) 2) (build-segments pts) [])]
     (if (and cfg (seq segs))
       (let [summaries (mapv
-                       (fn [{:keys [lat lon depth-ord distance-ord nm]}]
+                       (fn [{:keys [lat lon depth-m distance-ord nm]}]
                          (core/segment-risk cfg lat lon doy boat
                                             (assoc pass
-                                                   :depth-ord depth-ord
+                                                   :depth-m depth-m
                                                    :distance-ord distance-ord)
                                             nm base ref))
                        segs)
             route (core/route-risk cfg boat pass
-                                   (mapv #(select-keys % [:lat :lon :depth-ord
+                                   (mapv #(select-keys % [:lat :lon :depth-m
                                                           :distance-ord :nm])
                                          segs)
                                    doy base ref)]
@@ -846,7 +849,7 @@
         segs  (if (>= (count pts) 2) (build-segments pts) [])]
     (when (and cfg (seq segs))
       (assoc (core/route-risk cfg boat pass
-                              (mapv #(select-keys % [:lat :lon :depth-ord
+                              (mapv #(select-keys % [:lat :lon :depth-m
                                                      :distance-ord :nm])
                                     segs)
                               doy base ref)

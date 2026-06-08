@@ -15,10 +15,15 @@
        intentionally EXCLUDED from attr_mult (it is a spurious location proxy
        that double-counts the spatial field; see `attr-x-ref`).
 
-     - spatial (Part B): a seasonally-drifting occupancy field. The point is
-       drifted by the day-of-year cycle, an RBF basis is evaluated at the
-       drifted coords, f = sum_j w_j (B_j - col_means_j), and the relative risk
-       RR = exp(f)/Z is mean ~1 over sailed waters (bounded).
+     - spatial (Part B): a seasonally-drifting occupancy field PLUS a continuous
+       log-depth covariate. The point is drifted by the day-of-year cycle, an RBF
+       basis is evaluated at the drifted coords, f_rbf = sum_j w_j (B_j -
+       col_means_j); a depth term f_dep = b_d1*(z - z_bg_mean) + b_d2*(z2 -
+       z2_bg_mean) is added (z = standardize(log10 max(depth_m,1)); b_d2 < 0 =>
+       PEAKED shelf/upper-slope preference, abyssal water suppressed). The
+       relative risk RR = exp(f_rbf + f_dep)/Z is mean ~1 over sailed waters
+       (bounded; Z already includes the centered depth term). Each cell's depth_m
+       comes from geo_grid.json key \"m\" (metres, +down).
 
    Absolute level is anchored by a Fermi exposure rate h0 = -ln(1-base_rate)/ref_nm
    (hazard per nautical mile). base_rate is calibrated by REFERENCE ROUTE: it is
@@ -99,6 +104,10 @@
      :col-means   (:col_means sp)
      :n-basis     (:n_basis sp)
      :drift       (:drift sp)
+     ;; continuous log-depth covariate (spatial side): standardizers + the
+     ;; background means of z / z^2 (the depth analogue of col-means). Each
+     ;; spatial draw additionally carries per-draw :b_d1 :b_d2 (read by rr-draw).
+     :depth       (:depth sp)
      :spatial-draws (:draws sp)
      ;; calibration defaults
      :base-rate-default (:base_rate_default data)
@@ -150,10 +159,45 @@
     (reduce + 0.0
             (map-indexed (fn [j wj] (* wj (- (nth basis j) (nth cm j)))) w))))
 
+;; ── Continuous log-depth covariate (spatial side) ─────────────────────────────
+;;
+;; The old 4-bin depth ORDINAL was dropped (a spurious vessel-attr location proxy).
+;; Depth is now a CONTINUOUS covariate on the SPATIAL side: each geo-grid cell
+;; carries its seafloor depth in metres (+down) under key "m". We standardize the
+;; log10 depth exactly as the fit did — z = (log10(max(depth_m,1)) - logdepth_mean)
+;; / logdepth_sd, z2 = z^2 — and the per-draw term b_d1*(z - z_bg_mean) +
+;; b_d2*(z2 - z2_bg_mean) adds to f BEFORE the per-draw Z (which already includes
+;; the centered depth term, so RR stays mean ~1 over sailed waters). b_d2 < 0 makes
+;; the shape PEAKED: shelf/upper-slope water (~100-300 m) is favoured, abyssal
+;; (~4000 m) is suppressed.
+
+(defn depth-z
+  "Standardized [z z2] for a continuous depth in metres (+down). Floors depth at
+   1 m before log10 so land-ish / zero cells stay finite (matches the fit)."
+  [cfg depth-m]
+  (let [{:keys [logdepth_mean logdepth_sd]} (:depth cfg)
+        ld (js/Math.log10 (js/Math.max (or depth-m 1) 1))
+        zz (/ (- ld logdepth_mean) logdepth_sd)]
+    [zz (* zz zz)]))
+
+(defn depth-term-draw
+  "Per-draw depth contribution b_d1*(z - z_bg_mean) + b_d2*(z2 - z2_bg_mean) for a
+   precomputed [z z2] (nil dz => 0, e.g. a point with no depth info)."
+  [cfg sdraw dz]
+  (if dz
+    (let [{:keys [z_bg_mean z2_bg_mean]} (:depth cfg)
+          [zz zz2] dz]
+      (+ (* (:b_d1 sdraw) (- zz z_bg_mean))
+         (* (:b_d2 sdraw) (- zz2 z2_bg_mean))))
+    0.0))
+
 (defn rr-draw
-  "Relative risk RR = exp(f)/Z for one spatial draw {:w :Z}."
-  [cfg sdraw basis]
-  (/ (js/Math.exp (f-draw cfg (:w sdraw) basis)) (:Z sdraw)))
+  "Relative risk RR = exp(f_rbf + f_depth)/Z for one spatial draw {:w :Z :b_d1
+   :b_d2}. `dz` is the point's precomputed [z z2] depth (or nil for no depth)."
+  [cfg sdraw basis dz]
+  (/ (js/Math.exp (+ (f-draw cfg (:w sdraw) basis)
+                     (depth-term-draw cfg sdraw dz)))
+     (:Z sdraw)))
 
 ;; ── Support taper ────────────────────────────────────────────────────────────
 ;;
@@ -309,22 +353,26 @@
 
 (defn point-plan
   "Precompute everything draw-independent for one (lat,lon,doy, boat, passage):
-   the drifted spatial basis, the per-draw column contribution map for attr, the
-   hazard scalar h0, and the daylight factor. Consumed by `plan-hazard-draw`."
+   the drifted spatial basis, the per-point standardized depth [z z2] (from the
+   passage's :depth-m), the per-draw column contribution map for attr, the hazard
+   scalar h0, and the daylight factor. Consumed by `plan-hazard-draw`."
   [cfg lat lon doy boat passage base-rate ref-nm]
-  (let [basis (spatial-basis cfg lat lon doy)]
+  (let [basis (spatial-basis cfg lat lon doy)
+        dm    (:depth-m passage)]
     {:basis    basis
      :mask     (support-mask basis)
+     :dz       (when (some? dm) (depth-z cfg dm))
      :contribs (attr-x-ref cfg boat passage)
      :h0       (h0 base-rate ref-nm)
      :adj      (get daylight-adj (:daylight passage) 1.0)}))
 
 (defn plan-hazard-draw
   "hazard_per_nm for one paired (spatial-draw, attr-draw) using a point-plan:
-   h0 * mask * RR_d * attr_mult_d, scaled by the daylight factor. The support
+   h0 * mask * RR_d * attr_mult_d, scaled by the daylight factor. RR_d now folds
+   in the continuous-depth term via the plan's precomputed [z z2]. The support
    mask tapers the rate to ~0 in waters with no RBF support (see `support-mask`)."
   [cfg plan sdraw beta]
-  (let [rr   (rr-draw cfg sdraw (:basis plan))
+  (let [rr   (rr-draw cfg sdraw (:basis plan) (:dz plan))
         mult (js/Math.exp (attr-adj-draw (:contribs plan) beta))]
     (* (:h0 plan) (:adj plan) (:mask plan) rr mult)))
 
@@ -351,8 +399,9 @@
 
 (defn segment-risk
   "Percentile summary of p_seg(nm) over draws for one segment at one point.
-   passage carries :depth-ord :distance-ord :wind :sea :daylight; boat the
-   vessel attributes; doy the day-of-year; base-rate/ref-nm the calibration."
+   passage carries :depth-m (continuous seafloor depth, +down m) :distance-ord
+   :wind :sea :daylight; boat the vessel attributes; doy the day-of-year;
+   base-rate/ref-nm the calibration."
   [cfg lat lon doy boat passage nm base-rate ref-nm]
   (let [plan (point-plan cfg lat lon doy boat passage base-rate ref-nm)]
     (summary
@@ -363,13 +412,14 @@
 
 (defn route-risk
   "Percentile summary of p_route over draws. segments is a seq of
-   {:lat :lon :depth-ord :distance-ord :nm}; boat/passage shared. Each segment's
-   passage inherits the shared wind/sea/daylight plus its own depth/distance."
+   {:lat :lon :depth-m :distance-ord :nm}; boat/passage shared. Each segment's
+   passage inherits the shared wind/sea/daylight plus its own continuous depth
+   (:depth-m, used by the spatial RR depth term) and distance ordinal."
   [cfg boat passage segments doy base-rate ref-nm]
-  (let [plans (mapv (fn [{:keys [lat lon depth-ord distance-ord nm]}]
+  (let [plans (mapv (fn [{:keys [lat lon depth-m distance-ord nm]}]
                       {:plan (point-plan cfg lat lon doy boat
                                          (assoc passage
-                                                :depth-ord depth-ord
+                                                :depth-m depth-m
                                                 :distance-ord distance-ord)
                                          base-rate ref-nm)
                        :nm nm})
@@ -400,7 +450,8 @@
 ;; attr_mult split into static (depth/distance) and dynamic (vessel) factors.
 
 (defn mean-spatial-draw
-  "Elementwise mean of the spatial draws: {:w mean-w :Z mean-Z}."
+  "Elementwise mean of the spatial draws: {:w mean-w :Z mean-Z :b_d1 :b_d2}. The
+   mean depth coefficients are carried so the heatmap field is depth-aware too."
   [cfg]
   (let [draws (:spatial-draws cfg)
         n (count draws)
@@ -408,8 +459,10 @@
         w (mapv (fn [j]
                   (/ (reduce (fn [acc d] (+ acc (nth (:w d) j))) 0.0 draws) n))
                 (range m))
-        zsum (reduce (fn [acc d] (+ acc (:Z d))) 0.0 draws)]
-    {:w w :Z (/ zsum n)}))
+        zsum (reduce (fn [acc d] (+ acc (:Z d))) 0.0 draws)
+        b1   (/ (reduce (fn [acc d] (+ acc (:b_d1 d))) 0.0 draws) n)
+        b2   (/ (reduce (fn [acc d] (+ acc (:b_d2 d))) 0.0 draws) n)]
+    {:w w :Z (/ zsum n) :b_d1 b1 :b_d2 b2}))
 
 (defn mean-attr-draw
   "Elementwise mean over the attr beta draws (length-20 vector)."
@@ -423,16 +476,17 @@
 
 (defn heatmap-static
   "Per-cell location+season static part:
-   {:rr mean-RR(cell,doy) :static-mult exp(beta_dist*z) :scale h0*ref_nm}.
+   {:rr mean-RR(cell,doy,depth) :static-mult exp(beta_dist*z) :scale h0*ref_nm}.
    Uses the posterior-mean draws. Rebuild when doy/base-rate/ref-nm change.
 
-   The depth ordinal term is intentionally OMITTED here too (see `attr-x-ref`):
-   it is a spurious location proxy double-counting the spatial RBF field. Only
-   the distance-from-coast ordinal contributes to the static multiplier; the
-   depth-ord argument is retained in the signature but unused."
-  [cfg mean-sd mean-attr lat lon doy depth-ord distance-ord base-rate ref-nm]
+   RR now folds in the CONTINUOUS-DEPTH term via the cell's `depth-m` (the spatial
+   field is depth-aware). The static multiplier still carries only the distance-
+   from-coast ordinal; the old depth ordinal is gone (it was a vessel-attr location
+   proxy double-counting the field)."
+  [cfg mean-sd mean-attr lat lon doy depth-m distance-ord base-rate ref-nm]
   (let [basis (spatial-basis cfg lat lon doy)
-        rr    (* (rr-draw cfg mean-sd basis) (support-mask basis))
+        dz    (when (some? depth-m) (depth-z cfg depth-m))
+        rr    (* (rr-draw cfg mean-sd basis dz) (support-mask basis))
         oi    (:ord-idx cfg)
         smult (js/Math.exp
                (* (nth mean-attr (get oi :distance))
