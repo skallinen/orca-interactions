@@ -1,0 +1,356 @@
+;; harbor_coords.edn -- geocoded harbor / port coordinates for the orca route planner.
+;;
+;; Keyed by the ORIGINAL harbor string exactly as it appears in
+;; route-planner/data/harbor_strings.edn, so lookup is a plain map get.
+;; Each value: {:lat <deg N, +> :lon <deg E, negative for W> :confidence <:high|:med|:low> :note <str>}
+;;
+;; This file was bootstrapped by Claude (model claude-opus-4-8) reasoning over
+;; the place names directly -- no external geocoding API was called. For
+;; incremental re-runs (only NEW unresolved names) see
+;; orca_clj/scripts/geocode_harbors.clj.
+;;
+;; Confidence policy:
+;;   :high  named harbor/marina/port with a well-known fixed location.
+;;   :med   a town/cape/bay/area where a representative coastal point is used,
+;;          or a messy string resolved to a clear place by reasoning.
+;;   :low   non-harbor / country-level / very vague string; representative point.
+;;
+;; Longitudes are NEGATIVE (west of Greenwich) for essentially all of these.
+{"35°58 N • 5°55 W" {:lat 35.967 :lon -5.917 :confidence :high :note "explicit coords in Strait of Gibraltar"}
+ "39° 21.8 N, 009° 42.3 W (since west of Peniche was the northern border of the reporting zone at that time, see comments below)" {:lat 39.363 :lon -9.705 :confidence :high :note "explicit coords west of Peniche, Portugal"}
+ "43 25.435N 06 45.823E" {:lat 43.424 :lon -6.764 :confidence :med :note "explicit coords; E is a typo, point is N Spain coast near Luarca"}
+ "45 mn in the west of Povoa de Varzim (Portugal)" {:lat 41.38 :lon -9.65 :confidence :med :note "offshore point ~45nm W of Povoa de Varzim"}
+ "50 22N 4 11W" {:lat 50.367 :lon -4.183 :confidence :high :note "explicit coords off Plymouth, UK"}
+ "A Caruña" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}
+ "A Coruna" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}
+ "A Coruna (Marina Coruna)" {:lat 43.371 :lon -8.396 :confidence :high :note "Marina Coruña, A Coruña"}
+ "A Coruna, Spain" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}
+ "A Coruña" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}
+ "A coruna" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}
+ "ACoruna" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}
+ "ALGECIRAS" {:lat 36.127 :lon -5.436 :confidence :high :note "Algeciras, Bay of Gibraltar"}
+ "Albufeira" {:lat 37.085 :lon -8.267 :confidence :high :note "Albufeira marina, Algarve"}
+ "Albufeira - Portugal" {:lat 37.085 :lon -8.267 :confidence :high :note "Albufeira marina, Algarve"}
+ "Alcaidesa (Gibraltar)" {:lat 36.156 :lon -5.353 :confidence :high :note "Alcaidesa marina, La Línea"}
+ "Alcaidesa ES" {:lat 36.156 :lon -5.353 :confidence :high :note "Alcaidesa marina, La Línea"}
+ "Alcaidesa Marina ,La Linea, Spain" {:lat 36.156 :lon -5.353 :confidence :high :note "Alcaidesa marina, La Línea"}
+ "Algeciras (Bay of Gibraltar)" {:lat 36.127 :lon -5.436 :confidence :high :note "Algeciras, Bay of Gibraltar"}
+ "Algeciras, La Línea (Gibraltar)" {:lat 36.127 :lon -5.436 :confidence :high :note "Algeciras / La Línea, Bay of Gibraltar"}
+ "Alicante" {:lat 38.338 :lon -0.490 :confidence :high :note "Alicante, Mediterranean Spain"}
+ "Aliesa Marina" {:lat 36.156 :lon -5.353 :confidence :med :note "likely Alcaidesa Marina, La Línea (spelling)"}
+ "Alvor" {:lat 37.124 :lon -8.594 :confidence :high :note "Alvor, Algarve"}
+ "Anchorage in Sagres bay" {:lat 37.010 :lon -8.930 :confidence :high :note "Sagres bay, SW Portugal"}
+ "Anchorage under the bridge in Cadiz bay" {:lat 36.527 :lon -6.270 :confidence :high :note "Bay of Cadiz"}
+ "Ares, Spain" {:lat 43.426 :lon -8.243 :confidence :high :note "Ares, Ría de Ares, Galicia"}
+ "Audierne" {:lat 48.012 :lon -4.535 :confidence :high :note "Audierne, Brittany, France"}
+ "Audierne, France" {:lat 48.012 :lon -4.535 :confidence :high :note "Audierne, Brittany, France"}
+ "Aviles, Spain" {:lat 43.557 :lon -5.924 :confidence :high :note "Avilés, Asturias"}
+ "Ayamonte" {:lat 37.213 :lon -7.412 :confidence :high :note "Ayamonte, Huelva"}
+ "Ayamonte, Huelva province" {:lat 37.213 :lon -7.412 :confidence :high :note "Ayamonte, Huelva"}
+ "Ayomante" {:lat 37.213 :lon -7.412 :confidence :med :note "Ayamonte (spelling), Huelva"}
+ "Azores" {:lat 37.741 :lon -25.677 :confidence :low :note "Azores archipelago; Ponta Delgada used as representative"}
+ "Baiona" {:lat 42.117 :lon -8.851 :confidence :high :note "Baiona, Ría de Vigo, Galicia"}
+ "Baiona, Galicia, Spain" {:lat 42.117 :lon -8.851 :confidence :high :note "Baiona, Galicia"}
+ "Baiona, Spain" {:lat 42.117 :lon -8.851 :confidence :high :note "Baiona, Galicia"}
+ "Baleeira" {:lat 37.026 :lon -8.918 :confidence :high :note "Baleeira harbour, Sagres"}
+ "Barbate" {:lat 36.183 :lon -5.921 :confidence :high :note "Barbate, Cadiz province"}
+ "Benodet" {:lat 47.873 :lon -4.108 :confidence :high :note "Bénodet, Brittany, France"}
+ "Bilbao" {:lat 43.347 :lon -3.045 :confidence :high :note "Bilbao, Bay of Biscay"}
+ "Biscay Bay" {:lat 45.5 :lon -4.5 :confidence :low :note "Bay of Biscay, open-water representative point"}
+ "Bolonia" {:lat 36.092 :lon -5.772 :confidence :high :note "Bolonia bay, Cadiz province"}
+ "Bolonia, Spain" {:lat 36.092 :lon -5.772 :confidence :high :note "Bolonia bay, Cadiz province"}
+ "Brest" {:lat 48.390 :lon -4.490 :confidence :high :note "Brest, Brittany, France"}
+ "Brest, Brittany, France" {:lat 48.390 :lon -4.490 :confidence :high :note "Brest, Brittany, France"}
+ "Brest, France" {:lat 48.390 :lon -4.490 :confidence :high :note "Brest, Brittany, France"}
+ "CADIZ (PUERTO AMÉRICA)" {:lat 36.534 :lon -6.290 :confidence :high :note "Puerto America marina, Cadiz"}
+ "CASCAIS" {:lat 38.700 :lon -9.420 :confidence :high :note "Cascais marina, Portugal"}
+ "Cabo Ortegal" {:lat 43.766 :lon -7.870 :confidence :high :note "Cabo Ortegal, N Galicia"}
+ "Cabo St Vincente," {:lat 37.023 :lon -8.997 :confidence :high :note "Cabo de São Vicente, SW Portugal"}
+ "Cabo de Trafalgar" {:lat 36.182 :lon -6.039 :confidence :high :note "Cabo de Trafalgar, Cadiz province"}
+ "Cadix" {:lat 36.527 :lon -6.292 :confidence :high :note "Cadiz (French spelling)"}
+ "Cadiz" {:lat 36.527 :lon -6.292 :confidence :high :note "Cadiz, Spain"}
+ "Cadiz - Puerto America marina" {:lat 36.534 :lon -6.290 :confidence :high :note "Puerto America marina, Cadiz"}
+ "Cadiz - Spain" {:lat 36.527 :lon -6.292 :confidence :high :note "Cadiz, Spain"}
+ "Cadiz, Spain" {:lat 36.527 :lon -6.292 :confidence :high :note "Cadiz, Spain"}
+ "Camaret Sur Mer, France" {:lat 48.276 :lon -4.595 :confidence :high :note "Camaret-sur-Mer, Brittany"}
+ "Camaret-sur-mer" {:lat 48.276 :lon -4.595 :confidence :high :note "Camaret-sur-Mer, Brittany"}
+ "Camaret-sur-mer, closed coast of Galicia evening/Night of 31st of Aug" {:lat 48.276 :lon -4.595 :confidence :med :note "departure Camaret-sur-Mer, Brittany"}
+ "Camarinas" {:lat 43.130 :lon -9.182 :confidence :high :note "Camariñas, Galicia"}
+ "Camariñas" {:lat 43.130 :lon -9.182 :confidence :high :note "Camariñas, Galicia"}
+ "Cameret-sur-Mer" {:lat 48.276 :lon -4.595 :confidence :high :note "Camaret-sur-Mer, Brittany (spelling)"}
+ "Cangas, Ría de Vigo, Spain" {:lat 42.264 :lon -8.785 :confidence :high :note "Cangas, Ría de Vigo"}
+ "Cap Espartel" {:lat 35.795 :lon -5.921 :confidence :high :note "Cap Spartel, NW Morocco"}
+ "Cap Spartel" {:lat 35.795 :lon -5.921 :confidence :high :note "Cap Spartel, NW Morocco"}
+ "Cap spartel" {:lat 35.795 :lon -5.921 :confidence :high :note "Cap Spartel, NW Morocco"}
+ "Cape St Vincent" {:lat 37.023 :lon -8.997 :confidence :high :note "Cabo de São Vicente, SW Portugal"}
+ "Cape St.Vicente (incoming from Azores)" {:lat 37.023 :lon -8.997 :confidence :high :note "Cabo de São Vicente, SW Portugal"}
+ "Cape Trafalgar" {:lat 36.182 :lon -6.039 :confidence :high :note "Cabo de Trafalgar, Cadiz province"}
+ "Cartagena" {:lat 37.585 :lon -0.983 :confidence :high :note "Cartagena, Mediterranean Spain"}
+ "Cartagena, Spain" {:lat 37.585 :lon -0.983 :confidence :high :note "Cartagena, Mediterranean Spain"}
+ "Carthagena" {:lat 37.585 :lon -0.983 :confidence :high :note "Cartagena (spelling), Spain"}
+ "Cascais" {:lat 38.700 :lon -9.420 :confidence :high :note "Cascais marina, Portugal"}
+ "Cascais (with overnight stopover in Peniche)" {:lat 38.700 :lon -9.420 :confidence :high :note "Cascais marina, Portugal"}
+ "Cascais Portugal" {:lat 38.700 :lon -9.420 :confidence :high :note "Cascais marina, Portugal"}
+ "Cascais anchorage" {:lat 38.692 :lon -9.417 :confidence :high :note "Cascais bay anchorage"}
+ "Cascais, Portugal" {:lat 38.700 :lon -9.420 :confidence :high :note "Cascais marina, Portugal"}
+ "Cascais, Spain" {:lat 38.700 :lon -9.420 :confidence :high :note "Cascais is in Portugal; mislabelled"}
+ "Castro Urdiales, Spain" {:lat 43.383 :lon -3.215 :confidence :high :note "Castro Urdiales, Cantabria"}
+ "Cedeira" {:lat 43.660 :lon -8.058 :confidence :high :note "Cedeira, N Galicia"}
+ "Cederia" {:lat 43.660 :lon -8.058 :confidence :med :note "Cedeira (spelling), N Galicia"}
+ "Ceuta" {:lat 35.893 :lon -5.307 :confidence :high :note "Ceuta, N Africa (Spanish)"}
+ "Ceuta, Spain" {:lat 35.893 :lon -5.307 :confidence :high :note "Ceuta, N Africa (Spanish)"}
+ "Club Nautico de Muxia" {:lat 43.106 :lon -9.218 :confidence :high :note "Muxía yacht club, Galicia"}
+ "Comme" {:lat 43.139 :lon -8.962 :confidence :low :note "likely Corme, Galicia (spelling)"}
+ "Concarneau" {:lat 47.873 :lon -3.916 :confidence :high :note "Concarneau, Brittany, France"}
+ "Corme" {:lat 43.139 :lon -8.962 :confidence :high :note "Corme, Costa da Morte, Galicia"}
+ "Coruna" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}
+ "Cowes, UK" {:lat 50.763 :lon -1.298 :confidence :high :note "Cowes, Isle of Wight, UK"}
+ "Culatra" {:lat 36.998 :lon -7.840 :confidence :high :note "Ilha da Culatra, Ria Formosa, Faro"}
+ "Cádiz" {:lat 36.527 :lon -6.292 :confidence :high :note "Cadiz, Spain"}
+ "Détroit de Gibraltar côte Atlantique" {:lat 36.00 :lon -5.75 :confidence :med :note "Strait of Gibraltar, Atlantic side"}
+ "Enseada de Sardiñero" {:lat 42.880 :lon -9.260 :confidence :med :note "Ensenada del Sardiñeiro near Finisterre, Galicia"}
+ "Entrance of Faro / Olhao estuary" {:lat 36.965 :lon -7.872 :confidence :high :note "Faro/Olhão Ria Formosa inlet"}
+ "Estapona - Spain" {:lat 36.418 :lon -5.156 :confidence :high :note "Estepona (spelling), Costa del Sol"}
+ "Estepona" {:lat 36.418 :lon -5.156 :confidence :high :note "Estepona, Costa del Sol"}
+ "Estepona, Spain" {:lat 36.418 :lon -5.156 :confidence :high :note "Estepona, Costa del Sol"}
+ "Falmouth" {:lat 50.153 :lon -5.066 :confidence :high :note "Falmouth, Cornwall, UK"}
+ "Falmouth England, approx near Cadiz on 17th June at 21:00hrs UTC" {:lat 50.153 :lon -5.066 :confidence :med :note "departure Falmouth, UK"}
+ "Faro" {:lat 37.013 :lon -7.935 :confidence :high :note "Faro, Algarve"}
+ "Faro lagoon, Portugal" {:lat 36.985 :lon -7.873 :confidence :high :note "Ria Formosa lagoon, Faro"}
+ "Fig Foz" {:lat 40.145 :lon -8.866 :confidence :high :note "Figueira da Foz, Portugal"}
+ "Fig de Foz marina" {:lat 40.145 :lon -8.866 :confidence :high :note "Figueira da Foz marina, Portugal"}
+ "Figueira" {:lat 40.145 :lon -8.866 :confidence :high :note "Figueira da Foz, Portugal"}
+ "Figueira da Foz" {:lat 40.145 :lon -8.866 :confidence :high :note "Figueira da Foz, Portugal"}
+ "Figueira da Foz - Peniche - Cascais" {:lat 40.145 :lon -8.866 :confidence :med :note "route starting Figueira da Foz"}
+ "Figueira da voz" {:lat 40.145 :lon -8.866 :confidence :med :note "Figueira da Foz (spelling)"}
+ "Figueira de Foz" {:lat 40.145 :lon -8.866 :confidence :high :note "Figueira da Foz, Portugal"}
+ "Figueria da Foz" {:lat 40.145 :lon -8.866 :confidence :med :note "Figueira da Foz (spelling)"}
+ "Figueroa de Foz" {:lat 40.145 :lon -8.866 :confidence :med :note "Figueira da Foz (spelling)"}
+ "Finiisterre" {:lat 42.908 :lon -9.264 :confidence :med :note "Finisterre/Fisterra (spelling), Galicia"}
+ "Finisterra bay" {:lat 42.908 :lon -9.264 :confidence :high :note "Finisterre bay, Galicia"}
+ "Finisterre" {:lat 42.908 :lon -9.264 :confidence :high :note "Finisterre/Fisterra, Galicia"}
+ "Finisterre / Ensenada del Sardineiro" {:lat 42.890 :lon -9.262 :confidence :high :note "Finisterre, Ensenada del Sardiñeiro"}
+ "Finisterre, Sardiñiero" {:lat 42.890 :lon -9.262 :confidence :high :note "Finisterre, Ensenada del Sardiñeiro"}
+ "Fisterra" {:lat 42.908 :lon -9.264 :confidence :high :note "Fisterra (Finisterre), Galicia"}
+ "France" {:lat 47.5 :lon -3.5 :confidence :low :note "country-level; Atlantic Brittany/Biscay representative"}
+ "GIBRALTAR" {:lat 36.143 :lon -5.353 :confidence :high :note "port of Gibraltar"}
+ "Gibraltar" {:lat 36.143 :lon -5.353 :confidence :high :note "port of Gibraltar"}
+ "Gibraltar (La Linea)" {:lat 36.150 :lon -5.350 :confidence :high :note "Gibraltar / La Línea"}
+ "Gibraltar - Ocean View Marina" {:lat 36.155 :lon -5.353 :confidence :high :note "Ocean Village/Ocean View, Gibraltar"}
+ "Gibraltar -> Hyères" {:lat 36.143 :lon -5.353 :confidence :med :note "departure Gibraltar (dest Hyères, Med)"}
+ "Gibraltar / La Linea" {:lat 36.150 :lon -5.350 :confidence :high :note "Gibraltar / La Línea"}
+ "Gibraltar, UK" {:lat 36.143 :lon -5.353 :confidence :high :note "port of Gibraltar"}
+ "Gibraltar, approx near Tarifa 18th June 12:00hrs" {:lat 36.143 :lon -5.353 :confidence :med :note "Gibraltar (note re Tarifa)"}
+ "Gibratar" {:lat 36.143 :lon -5.353 :confidence :med :note "Gibraltar (spelling)"}
+ "Gijon" {:lat 43.545 :lon -5.696 :confidence :high :note "Gijón, Asturias"}
+ "Gijon, spain" {:lat 43.545 :lon -5.696 :confidence :high :note "Gijón, Asturias"}
+ "Gijón, ES" {:lat 43.545 :lon -5.696 :confidence :high :note "Gijón, Asturias"}
+ "Guernsey" {:lat 49.455 :lon -2.536 :confidence :med :note "Guernsey, Channel Islands (St Peter Port)"}
+ "Hamble" {:lat 50.862 :lon -1.314 :confidence :high :note "Hamble, Solent, UK"}
+ "Horta" {:lat 38.534 :lon -28.626 :confidence :high :note "Horta, Faial, Azores"}
+ "Houat Island France" {:lat 47.388 :lon -2.954 :confidence :high :note "Île de Houat, Brittany"}
+ "Huelva" {:lat 37.135 :lon -6.948 :confidence :high :note "Huelva, SW Spain"}
+ "Ile D’Yeu, Brittany, France" {:lat 46.726 :lon -2.349 :confidence :high :note "Île d'Yeu, Vendée, France"}
+ "Isla Ons" {:lat 42.383 :lon -8.933 :confidence :high :note "Illa de Ons, Ría de Pontevedra"}
+ "Isla cristina,  Huelva" {:lat 37.198 :lon -7.320 :confidence :high :note "Isla Cristina, Huelva"}
+ "Isla de Arousa, Arousa Ria" {:lat 42.563 :lon -8.872 :confidence :high :note "Illa de Arousa, Ría de Arousa"}
+ "Islas Sisargas" {:lat 43.357 :lon -8.846 :confidence :high :note "Islas Sisargas, Costa da Morte"}
+ "Islas Sisargs" {:lat 43.357 :lon -8.846 :confidence :med :note "Islas Sisargas (spelling)"}
+ "Jersey C.I." {:lat 49.183 :lon -2.111 :confidence :med :note "Jersey, Channel Islands (St Helier)"}
+ "Kinsale, Ireland" {:lat 51.706 :lon -8.523 :confidence :high :note "Kinsale, Co. Cork, Ireland"}
+ "L Coruna" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}
+ "LA LINEA (Andalusia)" {:lat 36.162 :lon -5.349 :confidence :high :note "La Línea de la Concepción"}
+ "LAGOS" {:lat 37.100 :lon -8.670 :confidence :high :note "Lagos, Algarve"}
+ "La Corogne" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña (French name)"}
+ "La Corogne  Galice, Espagne" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña (French name)"}
+ "La Coruna" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}
+ "La Coruna Spain" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}
+ "La Coruna, Spain" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}
+ "La Coruña" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}
+ "La LInea, Spain" {:lat 36.162 :lon -5.349 :confidence :high :note "La Línea de la Concepción"}
+ "La Linda de la concepcion" {:lat 36.162 :lon -5.349 :confidence :med :note "La Línea de la Concepción (spelling)"}
+ "La Linea" {:lat 36.162 :lon -5.349 :confidence :high :note "La Línea de la Concepción"}
+ "La Linea - anchorage" {:lat 36.160 :lon -5.345 :confidence :high :note "La Línea anchorage, Bay of Gibraltar"}
+ "La Linea de Concepcion" {:lat 36.162 :lon -5.349 :confidence :high :note "La Línea de la Concepción"}
+ "La Linea de Conception" {:lat 36.162 :lon -5.349 :confidence :high :note "La Línea de la Concepción"}
+ "La Linea de la Concepcion" {:lat 36.162 :lon -5.349 :confidence :high :note "La Línea de la Concepción"}
+ "La Linea via barbate" {:lat 36.162 :lon -5.349 :confidence :med :note "La Línea (via Barbate)"}
+ "La Linea, Gibraltar" {:lat 36.162 :lon -5.349 :confidence :high :note "La Línea, Bay of Gibraltar"}
+ "La Linea, Spain" {:lat 36.162 :lon -5.349 :confidence :high :note "La Línea de la Concepción"}
+ "La Linea- Alcaidesa" {:lat 36.156 :lon -5.353 :confidence :high :note "Alcaidesa marina, La Línea"}
+ "La Línea" {:lat 36.162 :lon -5.349 :confidence :high :note "La Línea de la Concepción"}
+ "La Línea, Spai" {:lat 36.162 :lon -5.349 :confidence :high :note "La Línea de la Concepción"}
+ "La Rochelle" {:lat 46.158 :lon -1.151 :confidence :high :note "La Rochelle, France"}
+ "La Rochelle -> Barbate" {:lat 46.158 :lon -1.151 :confidence :med :note "departure La Rochelle, France"}
+ "La Rochelle, France" {:lat 46.158 :lon -1.151 :confidence :high :note "La Rochelle, France"}
+ "La coruna" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}
+ "La linea de la conception" {:lat 36.162 :lon -5.349 :confidence :high :note "La Línea de la Concepción"}
+ "La linéa" {:lat 36.162 :lon -5.349 :confidence :high :note "La Línea de la Concepción"}
+ "Lagos" {:lat 37.100 :lon -8.670 :confidence :high :note "Lagos, Algarve"}
+ "Lagos Marina" {:lat 37.100 :lon -8.670 :confidence :high :note "Lagos marina, Algarve"}
+ "Lagos Portugal" {:lat 37.100 :lon -8.670 :confidence :high :note "Lagos, Algarve"}
+ "Lagos Portugal via Gibraltar" {:lat 37.100 :lon -8.670 :confidence :med :note "Lagos, Algarve (via Gibraltar)"}
+ "Lagos, Portugal" {:lat 37.100 :lon -8.670 :confidence :high :note "Lagos, Algarve"}
+ "Lanzarote" {:lat 28.963 :lon -13.553 :confidence :med :note "Lanzarote, Canary Islands (Arrecife)"}
+ "Laranjeiras" {:lat 37.085 :lon -7.515 :confidence :low :note "Laranjeiras, likely Ria Formosa area, Algarve"}
+ "Large de Cadiz" {:lat 36.45 :lon -6.40 :confidence :med :note "offshore Cadiz (French 'au large de')"}
+ "Las Palmas" {:lat 28.135 :lon -15.421 :confidence :high :note "Las Palmas, Gran Canaria"}
+ "Laxe, Cap Finisterre, Muros, Raxo, Cies, Baiona" {:lat 43.219 :lon -9.005 :confidence :med :note "route starting Laxe, Galicia"}
+ "Leixcos" {:lat 41.187 :lon -8.703 :confidence :med :note "Leixões, Porto (spelling)"}
+ "Leixoes" {:lat 41.187 :lon -8.703 :confidence :high :note "Leixões, Porto"}
+ "Lexioes" {:lat 41.187 :lon -8.703 :confidence :med :note "Leixões, Porto (spelling)"}
+ "Lighthouse Tarifa (going to La Linea)" {:lat 36.003 :lon -5.610 :confidence :high :note "Tarifa lighthouse, Strait of Gibraltar"}
+ "Lighthouse Trafalgar (coming from Cadiz)" {:lat 36.182 :lon -6.039 :confidence :high :note "Cabo Trafalgar lighthouse"}
+ "Lisboa" {:lat 38.707 :lon -9.137 :confidence :high :note "Lisbon, Portugal"}
+ "Lisbon" {:lat 38.707 :lon -9.137 :confidence :high :note "Lisbon, Portugal"}
+ "Lisbon Doca da Alcantara" {:lat 38.703 :lon -9.171 :confidence :high :note "Doca de Alcântara, Lisbon"}
+ "Llanes" {:lat 43.421 :lon -4.755 :confidence :high :note "Llanes, Asturias"}
+ "Lymington" {:lat 50.752 :lon -1.539 :confidence :high :note "Lymington, Solent, UK"}
+ "Lymington, UK" {:lat 50.752 :lon -1.539 :confidence :high :note "Lymington, Solent, UK"}
+ "Madeira" {:lat 32.647 :lon -16.908 :confidence :low :note "Madeira island; Funchal used as representative"}
+ "Madeire" {:lat 32.647 :lon -16.908 :confidence :low :note "Madeira (spelling); Funchal representative"}
+ "Malaga" {:lat 36.715 :lon -4.417 :confidence :high :note "Málaga, Costa del Sol"}
+ "Marbella" {:lat 36.508 :lon -4.886 :confidence :high :note "Marbella, Costa del Sol"}
+ "Marina Albufeira" {:lat 37.085 :lon -8.267 :confidence :high :note "Albufeira marina, Algarve"}
+ "Marina Douro, Porto, Portugal" {:lat 41.144 :lon -8.674 :confidence :high :note "Douro marina, Porto"}
+ "Marina Isla Cristina" {:lat 37.198 :lon -7.320 :confidence :high :note "Isla Cristina marina, Huelva"}
+ "Marina Lagos" {:lat 37.100 :lon -8.670 :confidence :high :note "Lagos marina, Algarve"}
+ "Marina Mazagon" {:lat 37.131 :lon -6.835 :confidence :high :note "Mazagón marina, Huelva"}
+ "Marina Motril" {:lat 36.717 :lon -3.527 :confidence :high :note "Motril marina, Granada"}
+ "Marina Muxia" {:lat 43.106 :lon -9.218 :confidence :high :note "Muxía marina, Galicia"}
+ "Marina Porto Atlantico, Oporto" {:lat 41.187 :lon -8.703 :confidence :high :note "Porto Atlântico marina, Leixões"}
+ "Marina Puerto America" {:lat 36.534 :lon -6.290 :confidence :high :note "Puerto America marina, Cadiz"}
+ "Marina Seca, A Coruña" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña marina"}
+ "Marina Sesimbra" {:lat 38.435 :lon -9.103 :confidence :high :note "Sesimbra marina, Portugal"}
+ "Marina de Cascais" {:lat 38.700 :lon -9.420 :confidence :high :note "Cascais marina, Portugal"}
+ "Marina de Lagos" {:lat 37.100 :lon -8.670 :confidence :high :note "Lagos marina, Algarve"}
+ "Maroccan Coast after Cap Spartel" {:lat 35.78 :lon -5.95 :confidence :med :note "Moroccan Atlantic coast SW of Cap Spartel"}
+ "Mazagon" {:lat 37.131 :lon -6.835 :confidence :high :note "Mazagón, Huelva"}
+ "Motril" {:lat 36.717 :lon -3.527 :confidence :high :note "Motril, Granada"}
+ "Muros" {:lat 42.776 :lon -9.059 :confidence :high :note "Muros, Ría de Muros, Galicia"}
+ "Muros (Spain)" {:lat 42.776 :lon -9.059 :confidence :high :note "Muros, Galicia"}
+ "Muros, Spain" {:lat 42.776 :lon -9.059 :confidence :high :note "Muros, Galicia"}
+ "Muxia" {:lat 43.106 :lon -9.218 :confidence :high :note "Muxía, Costa da Morte, Galicia"}
+ "Muxia (Spain)" {:lat 43.106 :lon -9.218 :confidence :high :note "Muxía, Galicia"}
+ "Muxia, Spain" {:lat 43.106 :lon -9.218 :confidence :high :note "Muxía, Galicia"}
+ "Muxio" {:lat 43.106 :lon -9.218 :confidence :med :note "Muxía (spelling), Galicia"}
+ "Muxía" {:lat 43.106 :lon -9.218 :confidence :high :note "Muxía, Galicia"}
+ "Muxía Marina" {:lat 43.106 :lon -9.218 :confidence :high :note "Muxía marina, Galicia"}
+ "Nauaré" {:lat 39.589 :lon -9.073 :confidence :med :note "Nazaré (spelling), Portugal"}
+ "Nazare" {:lat 39.589 :lon -9.073 :confidence :high :note "Nazaré, Portugal"}
+ "Nazaré" {:lat 39.589 :lon -9.073 :confidence :high :note "Nazaré, Portugal"}
+ "Nazaré PT" {:lat 39.589 :lon -9.073 :confidence :high :note "Nazaré, Portugal"}
+ "Newlyn, UK" {:lat 50.103 :lon -5.546 :confidence :high :note "Newlyn, Cornwall, UK"}
+ "Ocean Village Marina, Gibraltar" {:lat 36.146 :lon -5.355 :confidence :high :note "Ocean Village marina, Gibraltar"}
+ "Oeiras" {:lat 38.677 :lon -9.317 :confidence :high :note "Oeiras marina, near Lisbon"}
+ "Oeiras Marina, Lisbon" {:lat 38.677 :lon -9.317 :confidence :high :note "Oeiras marina, near Lisbon"}
+ "Oeiras, Lisbon" {:lat 38.677 :lon -9.317 :confidence :high :note "Oeiras marina, near Lisbon"}
+ "Oerias" {:lat 38.677 :lon -9.317 :confidence :med :note "Oeiras (spelling), near Lisbon"}
+ "Of the coast of Bolonia" {:lat 36.085 :lon -5.790 :confidence :med :note "off Bolonia, Cadiz province"}
+ "Off Camariñas, Spain, following Biscay passage from Scilly Isles, UK," {:lat 43.130 :lon -9.182 :confidence :med :note "off Camariñas, Galicia"}
+ "Ouessant" {:lat 48.458 :lon -5.095 :confidence :high :note "Ouessant/Ushant, Brittany"}
+ "Oussant" {:lat 48.458 :lon -5.095 :confidence :med :note "Ouessant (spelling), Brittany"}
+ "PORTO SANTO (Madeira)" {:lat 33.063 :lon -16.339 :confidence :high :note "Porto Santo, Madeira"}
+ "PT Marina de Cascais" {:lat 38.700 :lon -9.420 :confidence :high :note "Cascais marina, Portugal"}
+ "Palmones, Spain" {:lat 36.179 :lon -5.430 :confidence :high :note "Palmones, Bay of Gibraltar"}
+ "Pavoa de Varzim" {:lat 41.380 :lon -8.768 :confidence :high :note "Póvoa de Varzim, Portugal"}
+ "Peniche" {:lat 39.355 :lon -9.375 :confidence :high :note "Peniche, Portugal"}
+ "Peniche de Cima" {:lat 39.355 :lon -9.375 :confidence :med :note "Peniche, Portugal"}
+ "Playa de Agueira, Muros Ria" {:lat 42.760 :lon -9.030 :confidence :med :note "beach in Ría de Muros, Galicia"}
+ "Plymouth" {:lat 50.365 :lon -4.143 :confidence :high :note "Plymouth, Devon, UK"}
+ "Ponta Delgada" {:lat 37.741 :lon -25.677 :confidence :high :note "Ponta Delgada, São Miguel, Azores"}
+ "Port Rota" {:lat 36.617 :lon -6.350 :confidence :high :note "Rota marina, Bay of Cadiz"}
+ "Port of Bilbao, Spain" {:lat 43.347 :lon -3.045 :confidence :high :note "Port of Bilbao"}
+ "Portimao" {:lat 37.118 :lon -8.529 :confidence :high :note "Portimão, Algarve"}
+ "Portimão" {:lat 37.118 :lon -8.529 :confidence :high :note "Portimão, Algarve"}
+ "Porto" {:lat 41.144 :lon -8.674 :confidence :high :note "Porto, Portugal (Douro/Leixões area)"}
+ "Porto Santo" {:lat 33.063 :lon -16.339 :confidence :high :note "Porto Santo, Madeira"}
+ "Porto Santo, Ila’s Madeira" {:lat 33.063 :lon -16.339 :confidence :high :note "Porto Santo, Madeira"}
+ "Porto Santo, Madeira" {:lat 33.063 :lon -16.339 :confidence :high :note "Porto Santo, Madeira"}
+ "Porto de O Grove (Rias de Arosa)" {:lat 42.495 :lon -8.864 :confidence :high :note "O Grove, Ría de Arousa, Galicia"}
+ "Porto, Portugal" {:lat 41.144 :lon -8.674 :confidence :high :note "Porto, Portugal"}
+ "Portosin" {:lat 42.762 :lon -8.948 :confidence :high :note "Portosín, Ría de Muros, Galicia"}
+ "Portosin Marina" {:lat 42.762 :lon -8.948 :confidence :high :note "Portosín marina, Galicia"}
+ "Povoa de Varzim" {:lat 41.380 :lon -8.768 :confidence :high :note "Póvoa de Varzim, Portugal"}
+ "Povoa de Varzim (Portugal)" {:lat 41.380 :lon -8.768 :confidence :high :note "Póvoa de Varzim, Portugal"}
+ "Povoa de Vazim" {:lat 41.380 :lon -8.768 :confidence :med :note "Póvoa de Varzim (spelling)"}
+ "Povoa do Varzim" {:lat 41.380 :lon -8.768 :confidence :high :note "Póvoa de Varzim, Portugal"}
+ "Praia das Furnas" {:lat 42.760 :lon -9.045 :confidence :low :note "Praia das Furnas, Galician ria coast"}
+ "Puerto Calero Lanzarote" {:lat 28.917 :lon -13.706 :confidence :high :note "Puerto Calero marina, Lanzarote"}
+ "Puerto Sherry" {:lat 36.578 :lon -6.243 :confidence :high :note "Puerto Sherry, El Puerto de Santa María, Cadiz"}
+ "Puerto Sherry, Cadiz" {:lat 36.578 :lon -6.243 :confidence :high :note "Puerto Sherry, Bay of Cadiz"}
+ "Quiberon, FR" {:lat 47.483 :lon -3.120 :confidence :high :note "Quiberon, Brittany, France"}
+ "ROTA" {:lat 36.617 :lon -6.350 :confidence :high :note "Rota, Bay of Cadiz"}
+ "Ria  Viveiro" {:lat 43.660 :lon -7.595 :confidence :high :note "Ría de Viveiro, N Galicia"}
+ "Ria Camarinas" {:lat 43.130 :lon -9.182 :confidence :high :note "Ría de Camariñas, Galicia"}
+ "Ria De Cederia" {:lat 43.660 :lon -8.058 :confidence :med :note "Ría de Cedeira, N Galicia"}
+ "Ria Viveiro" {:lat 43.660 :lon -7.595 :confidence :high :note "Ría de Viveiro, N Galicia"}
+ "Ria de Ares" {:lat 43.426 :lon -8.243 :confidence :high :note "Ría de Ares, Galicia"}
+ "Ria de Ortugueira" {:lat 43.694 :lon -7.851 :confidence :med :note "Ría de Ortigueira, N Galicia"}
+ "Ria de Viveiro, ES" {:lat 43.660 :lon -7.595 :confidence :high :note "Ría de Viveiro, N Galicia"}
+ "Ribadeo" {:lat 43.536 :lon -7.041 :confidence :high :note "Ribadeo, N Galicia"}
+ "Ribeira" {:lat 42.557 :lon -8.992 :confidence :high :note "Ribeira, Ría de Arousa, Galicia"}
+ "Rio Formosa estuary" {:lat 36.985 :lon -7.873 :confidence :high :note "Ria Formosa estuary, Faro"}
+ "Riveira / Ribeira, Spain" {:lat 42.557 :lon -8.992 :confidence :high :note "Ribeira, Ría de Arousa, Galicia"}
+ "Rota" {:lat 36.617 :lon -6.350 :confidence :high :note "Rota, Bay of Cadiz"}
+ "Rota (Bay of Cadiz)" {:lat 36.617 :lon -6.350 :confidence :high :note "Rota, Bay of Cadiz"}
+ "Rota,  near Cadiz" {:lat 36.617 :lon -6.350 :confidence :high :note "Rota, near Cadiz"}
+ "Rota, Bay of Cadiz" {:lat 36.617 :lon -6.350 :confidence :high :note "Rota, Bay of Cadiz"}
+ "Rota, Cadiz" {:lat 36.617 :lon -6.350 :confidence :high :note "Rota, Bay of Cadiz"}
+ "Rota, just North of Cadiz" {:lat 36.617 :lon -6.350 :confidence :high :note "Rota, near Cadiz"}
+ "SESIMBRA" {:lat 38.435 :lon -9.103 :confidence :high :note "Sesimbra, Portugal"}
+ "SINES" {:lat 37.950 :lon -8.870 :confidence :high :note "Sines, Portugal"}
+ "Sada" {:lat 43.355 :lon -8.252 :confidence :high :note "Sada, Ría de Betanzos, Galicia"}
+ "Sada la corogne" {:lat 43.355 :lon -8.252 :confidence :high :note "Sada, near A Coruña, Galicia"}
+ "Sagres" {:lat 37.010 :lon -8.930 :confidence :high :note "Sagres, SW Portugal"}
+ "San Antonio,  Ibiza" {:lat 38.981 :lon 1.300 :confidence :high :note "Sant Antoni de Portmany, Ibiza (Mediterranean, lon positive)"}
+ "Sancti Petri" {:lat 36.385 :lon -6.222 :confidence :high :note "Sancti Petri, Chiclana, Cadiz"}
+ "Santa Cruz de Tenerife" {:lat 28.468 :lon -16.247 :confidence :high :note "Santa Cruz de Tenerife, Canary Islands"}
+ "Sanxenxo" {:lat 42.401 :lon -8.808 :confidence :high :note "Sanxenxo, Ría de Pontevedra, Galicia"}
+ "Sanyenxo" {:lat 42.401 :lon -8.808 :confidence :med :note "Sanxenxo (spelling), Galicia"}
+ "Sao Jacinto bay" {:lat 40.660 :lon -8.740 :confidence :high :note "São Jacinto, Ria de Aveiro, Portugal"}
+ "Sardiñiero (Finisterre)" {:lat 42.890 :lon -9.262 :confidence :high :note "Ensenada del Sardiñeiro, Finisterre"}
+ "Sesimbra" {:lat 38.435 :lon -9.103 :confidence :high :note "Sesimbra, Portugal"}
+ "Setabul" {:lat 38.524 :lon -8.894 :confidence :med :note "Setúbal (spelling), Portugal"}
+ "Setibul" {:lat 38.524 :lon -8.894 :confidence :med :note "Setúbal (spelling), Portugal"}
+ "Setubal" {:lat 38.524 :lon -8.894 :confidence :high :note "Setúbal, Portugal"}
+ "Sine" {:lat 37.950 :lon -8.870 :confidence :med :note "Sines (spelling), Portugal"}
+ "Sines" {:lat 37.950 :lon -8.870 :confidence :high :note "Sines, Portugal"}
+ "Sines marina" {:lat 37.950 :lon -8.870 :confidence :high :note "Sines marina, Portugal"}
+ "Sisimbra" {:lat 38.435 :lon -9.103 :confidence :med :note "Sesimbra (spelling), Portugal"}
+ "Sortie Gibraltar" {:lat 36.143 :lon -5.353 :confidence :med :note "exit from Gibraltar (French 'sortie')"}
+ "Started from Gibraltar" {:lat 36.143 :lon -5.353 :confidence :high :note "Gibraltar"}
+ "São Martinho do Porto" {:lat 39.513 :lon -9.140 :confidence :high :note "São Martinho do Porto, Portugal"}
+ "Tanger" {:lat 35.785 :lon -5.812 :confidence :high :note "Tangier, Morocco (Tanger Med/city)"}
+ "Tanger Bay Marina, Morocco" {:lat 35.785 :lon -5.812 :confidence :high :note "Tangier Bay marina, Morocco"}
+ "Tangier" {:lat 35.785 :lon -5.812 :confidence :high :note "Tangier, Morocco"}
+ "Tangier - Morocco" {:lat 35.785 :lon -5.812 :confidence :high :note "Tangier, Morocco"}
+ "Tangier, Morocco" {:lat 35.785 :lon -5.812 :confidence :high :note "Tangier, Morocco"}
+ "Tangiers, Morocco" {:lat 35.785 :lon -5.812 :confidence :high :note "Tangier, Morocco"}
+ "Tanja Mari a Bay, Tangier, Morocco" {:lat 35.785 :lon -5.812 :confidence :med :note "Tanja Marina Bay, Tangier"}
+ "Tarifa" {:lat 36.013 :lon -5.604 :confidence :high :note "Tarifa, Strait of Gibraltar"}
+ "Tarifa ( then Gibraltar" {:lat 36.013 :lon -5.604 :confidence :high :note "Tarifa (then Gibraltar)"}
+ "Tenerife" {:lat 28.468 :lon -16.247 :confidence :med :note "Tenerife, Canary Islands (Santa Cruz)"}
+ "Tenerife, Canary Islands" {:lat 28.468 :lon -16.247 :confidence :high :note "Tenerife, Canary Islands"}
+ "UK" {:lat 50.36 :lon -4.14 :confidence :low :note "country-level; SW England (Plymouth) representative"}
+ "UK Brixham Marina" {:lat 50.398 :lon -3.512 :confidence :high :note "Brixham marina, Devon, UK"}
+ "Viana do Casteelo" {:lat 41.694 :lon -8.829 :confidence :med :note "Viana do Castelo (spelling), Portugal"}
+ "Viana do Castelo" {:lat 41.694 :lon -8.829 :confidence :high :note "Viana do Castelo, Portugal"}
+ "Viana do castelo, Portugal" {:lat 41.694 :lon -8.829 :confidence :high :note "Viana do Castelo, Portugal"}
+ "Viana do catelo" {:lat 41.694 :lon -8.829 :confidence :med :note "Viana do Castelo (spelling)"}
+ "Vigo" {:lat 42.241 :lon -8.722 :confidence :high :note "Vigo, Ría de Vigo, Galicia"}
+ "Vigo (punta Lagoa)" {:lat 42.255 :lon -8.713 :confidence :high :note "Punta Lagoa marina, Vigo"}
+ "Vigo, Spain" {:lat 42.241 :lon -8.722 :confidence :high :note "Vigo, Galicia"}
+ "Vila do Porto, Santa Maria, Azores, Portugal" {:lat 36.944 :lon -25.143 :confidence :high :note "Vila do Porto, Santa Maria, Azores"}
+ "Vilamoura" {:lat 37.073 :lon -8.117 :confidence :high :note "Vilamoura marina, Algarve"}
+ "Vilamoura Marina" {:lat 37.073 :lon -8.117 :confidence :high :note "Vilamoura marina, Algarve"}
+ "Villamoura" {:lat 37.073 :lon -8.117 :confidence :med :note "Vilamoura (spelling), Algarve"}
+ "Visna do Castela" {:lat 41.694 :lon -8.829 :confidence :low :note "likely Viana do Castelo (spelling)"}
+ "Viveiro" {:lat 43.661 :lon -7.595 :confidence :high :note "Viveiro, N Galicia"}
+ "Viveiro, Spain" {:lat 43.661 :lon -7.595 :confidence :high :note "Viveiro, N Galicia"}
+ "Viviero" {:lat 43.661 :lon -7.595 :confidence :med :note "Viveiro (spelling), N Galicia"}
+ "acoruna" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}
+ "apres gibraltar" {:lat 36.143 :lon -5.353 :confidence :med :note "after Gibraltar (French 'après')"}
+ "portimao" {:lat 37.118 :lon -8.529 :confidence :high :note "Portimão, Algarve"}
+ "viveiro" {:lat 43.661 :lon -7.595 :confidence :high :note "Viveiro, N Galicia"}
+ "À coruna" {:lat 43.371 :lon -8.396 :confidence :high :note "A Coruña, Galicia"}}
