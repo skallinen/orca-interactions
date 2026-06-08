@@ -224,12 +224,46 @@
                   [di dj]))
           (recur (inc r))))))
 
+(defn- bilinear-coarse
+  "BILINEARLY interpolate the coarse-sample S ({:rr :static-mult :scale}) at the
+   0.1° cell (li,oi) from the four surrounding model-stride samples (the ones that
+   are sea), so the field blends smoothly over the model tile instead of stepping
+   in coarse blocks. Falls back to the nearest sample if none of the four exist."
+  [coarse li oi]
+  (let [s  model-stride
+        l0 (* s (js/Math.floor (/ li s)))
+        o0 (* s (js/Math.floor (/ oi s)))
+        u  (/ (- li l0) s)
+        v  (/ (- oi o0) s)]
+    (loop [cs [[l0 o0 (* (- 1.0 u) (- 1.0 v))]
+               [(+ l0 s) o0 (* u (- 1.0 v))]
+               [l0 (+ o0 s) (* (- 1.0 u) v)]
+               [(+ l0 s) (+ o0 s) (* u v)]]
+           rr 0.0
+           sm 0.0
+           sc nil
+           w  0.0]
+      (if (empty? cs)
+        (if (pos? w)
+          {:rr (/ rr w) :static-mult (/ sm w) :scale sc}
+          (nearest-coarse coarse li oi))
+        (let [[cl co cw] (first cs)
+              cell-s (get coarse (str cl "," co))]
+          (if (and cell-s (pos? cw))
+            (recur (rest cs)
+                   (+ rr (* cw (:rr cell-s)))
+                   (+ sm (* cw (:static-mult cell-s)))
+                   (:scale cell-s)
+                   (+ w cw))
+            (recur (rest cs) rr sm sc w)))))))
+
 (defn- build-static-cells!
   "Precompute the per-cell location+season static part once. The costly model
    field is sampled on a coarse model-stride sub-grid; every 0.1° SEA cell is then
-   a render cell that borrows the nearest coarse sample's :S (so the painted field
-   masks exactly to the sea at 0.1°). Each entry's :S is the {:rr :static-mult
-   :scale} map from core/heatmap-static. Rebuild when doy/base-rate/ref-nm change.
+   a render cell whose :S is BILINEARLY interpolated from the four surrounding
+   coarse samples (so the field is smooth across the model tiles, not blocky),
+   while the 0.1° mask keeps the painted region exactly the sea. Each :S is a
+   {:rr :static-mult :scale} map. Rebuild when doy/base-rate/ref-nm change.
    Stores [{:li :oi :lat :lon :S} …] in static-cells and a \"li,oi\"→index JS
    object in cell-index (so the painter can look up only the cells in a tile)."
   [cfg grid]
@@ -254,12 +288,12 @@
                             m)))
                       (transient {})
                       cells))
-        ;; 2. render every sea cell, borrowing the nearest coarse sample's S.
+        ;; 2. render every sea cell, bilinearly interpolating the coarse samples.
         idx       #js {}
         out       (reduce
                     (fn [[acc i] [k _v]]
                       (let [[li oi] (key->ints k)
-                            s (nearest-coarse coarse li oi)]
+                            s (bilinear-coarse coarse li oi)]
                         (if s
                           (do (aset idx (str li "," oi) i)
                               [(conj! acc {:li li :oi oi :lat (/ li 10.0)
