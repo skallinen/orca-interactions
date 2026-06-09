@@ -57,7 +57,7 @@
 ;; active centers 84->39 and removed the abyssal-field leak, lowering the
 ;; overall field amplitude; this anchor was re-tuned UP from 0.00315 to
 ;; 0.00358 to restore the reference route to ~2.5%.
-(def base-rate-default 0.00358)
+(def base-rate-default 0.0036311)
 (def ref-nm-default 100.0)
 
 ;; Seasonal drift (ecology-fixed): mu_lat(doy) = a-lat * sin(2pi*(doy-phi)/365).
@@ -236,24 +236,24 @@
         unmappable (atom {})
         missing (atom {})
         decoded (mapv
-                 (fn [r]
-                   (let [ords (reduce
-                               (fn [acc ok]
-                                 (let [src (ordinal-src ok)
-                                       res (map-ordinal (ordmaps ok) (get r src))]
-                                   (cond
-                                     (:unmappable res)
-                                     (do (swap! unmappable update-in
-                                                [ok (:unmappable res)] (fnil inc 0))
-                                           ;; treat unmappable as missing for fit
+                  (fn [r]
+                    (let [ords (reduce
+                                 (fn [acc ok]
+                                   (let [src (ordinal-src ok)
+                                         res (map-ordinal (ordmaps ok) (get r src))]
+                                     (cond
+                                       (:unmappable res)
+                                       (do (swap! unmappable update-in
+                                                  [ok (:unmappable res)] (fnil inc 0))
+                                         ;; treat unmappable as missing for fit
                                          (assoc acc ok nil))
-                                     (nil? (:val res))
-                                     (do (swap! missing update ok (fnil inc 0))
-                                         (assoc acc ok nil))
-                                     :else (assoc acc ok (:val res)))))
-                               {} ordinal-keys)]
-                     (merge r ords)))
-                 rows)
+                                       (nil? (:val res))
+                                       (do (swap! missing update ok (fnil inc 0))
+                                           (assoc acc ok nil))
+                                       :else (assoc acc ok (:val res)))))
+                                 {} ordinal-keys)]
+                      (merge r ords)))
+                  rows)
         cat-levels (into {} (map (fn [k] [k (category-levels decoded k)])
                                  categorical-keys))]
     {:rows decoded :ordmaps ordmaps :cat-levels cat-levels
@@ -287,11 +287,11 @@
                            (if (nil? v) 0.0 (/ (- (double v) mean) sd))))
                        ordinal-keys)
         cat-part (vec
-                  (mapcat
-                   (fn [k]
-                     (let [v (get row (categorical-src k))]
-                       (map (fn [lvl] (if (= v lvl) 1.0 0.0)) (cat-levels k))))
-                   categorical-keys))]
+                   (mapcat
+                     (fn [k]
+                       (let [v (get row (categorical-src k))]
+                         (map (fn [lvl] (if (= v lvl) 1.0 0.0)) (cat-levels k))))
+                     categorical-keys))]
     (into ord-part cat-part)))
 
 (defn build-attr-design
@@ -311,10 +311,10 @@
   "Compile + sample attr_logit.stan. Returns per-chain datasets."
   [{:keys [N K X y]}]
   (stan/sample-chains
-   "stan/attr_logit.stan"
-   {:N N :K K :X X :y y}
-   {:n-chains 4 :seed fit-seed :num-warmup 1000 :num-samples 2000
-    :out-dir (str (config/cfg :paths :out-dir) "/planner_attr")}))
+    "stan/attr_logit.stan"
+    {:N N :K K :X X :y y}
+    {:n-chains 4 :seed fit-seed :num-warmup 1000 :num-samples 2000
+     :out-dir (str (config/cfg :paths :out-dir) "/planner_attr")}))
 
 (defn beta-cols [k] (mapv #(str "beta." (inc %)) (range k)))
 
@@ -468,10 +468,10 @@
   "Compile + sample spatial.stan on the drifted design. Per-chain datasets."
   [{:keys [N M y Bsp z z2]}]
   (stan/sample-chains
-   "stan/spatial.stan"
-   {:N N :M M :y y :Bsp Bsp :z z :z2 z2}
-   {:n-chains 4 :seed fit-seed :num-warmup 1000 :num-samples 2000
-    :out-dir (str (config/cfg :paths :out-dir) "/planner_spatial")}))
+    "stan/spatial.stan"
+    {:N N :M M :y y :Bsp Bsp :z z :z2 z2}
+    {:n-chains 4 :seed fit-seed :num-warmup 1000 :num-samples 2000
+     :out-dir (str (config/cfg :paths :out-dir) "/planner_spatial")}))
 
 (defn w-cols [m] (mapv #(str "w." (inc %)) (range m)))
 
@@ -620,11 +620,12 @@
                        :drift {:a_lat (:a-lat drift) :phi (:phi drift)
                                :a_lon (:a-lon drift) :period (:period drift)}
                        ;; continuous-depth covariate (regularized log-depth)
-                       :depth {:source "ETOPO_2022_v1_15s (bathy.json, +down m)"
-                               :logdepth_mean (round6 (double logdepth-mean))
-                               :logdepth_sd (round6 (double logdepth-sd))
-                               :z_bg_mean (round6 (double z-bg-mean))
-                               :z2_bg_mean (round6 (double z2-bg-mean))}
+                       :depth
+                       {:source "EMODnet DTM 2024 ~115m, 0.01deg hybrid +down m; ETOPO fallback"
+                        :logdepth_mean (round6 (double logdepth-mean))
+                        :logdepth_sd (round6 (double logdepth-sd))
+                        :z_bg_mean (round6 (double z-bg-mean))
+                        :z2_bg_mean (round6 (double z2-bg-mean))}
                        :draws spatial-draws
                        :note spatial-note}}]
     (util/write-json out-path out)
@@ -785,11 +786,11 @@
         n-draws* (count (:ws rt))
         ;; accumulate per-draw lambda over segments
         lambda (reduce
-                (fn [acc [la lo nm]]
-                  (let [rrs (rr-draws rt la lo doy)]
-                    (mapv (fn [a r] (+ a (* h r nm))) acc rrs)))
-                (vec (repeat n-draws* 0.0))
-                segs)
+                 (fn [acc [la lo nm]]
+                   (let [rrs (rr-draws rt la lo doy)]
+                     (mapv (fn [a r] (+ a (* h r nm))) acc rrs)))
+                 (vec (repeat n-draws* 0.0))
+                 segs)
         ps (mapv (fn [l] (- 1.0 (Math/exp (- l)))) lambda)
         [lo hi] (diag/eti ps 0.89)]
     {:median (util/quantile ps 0.5) :lo lo :hi hi :n-seg (count segs)}))
