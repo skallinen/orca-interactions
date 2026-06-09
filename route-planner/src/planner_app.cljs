@@ -345,13 +345,13 @@
 ;; BEFORE the colour ramp. This is still a fixed, selection-INDEPENDENT function of
 ;; the per-cell intensity — the SAME intensity always yields the SAME colour — it
 ;; just re-curves the *display* so low-but-nonzero cells gain colour. With
-;; risk-gamma=0.4: p90 (t≈0.22) → t'≈0.55 (clear yellow→orange), p95 (t≈0.45) →
-;; t'≈0.72 (orange), p98 (t≈0.80) → t'≈0.91 (red), while the p50 background still
-;; sits at/below the floor and reads green. field-alpha is raised so the colours sit
-;; strongly over the dark basemap instead of washing out.
+;; risk-gamma=0.5 (sqrt): p90 (t≈0.22) → t'≈0.47 (yellow), p95 (t≈0.45) →
+;; t'≈0.67 (yellow→orange), p98 (t≈0.80) → t'≈0.89 (red), while the p50 background
+;; still sits at/below the floor and reads green. field-alpha is raised so the colours
+;; sit strongly over the dark basemap instead of washing out.
 (def ^:private risk-lo 0.004)
 (def ^:private risk-hi 0.06)
-(def ^:private risk-gamma 0.4)
+(def ^:private risk-gamma 0.5)
 (def ^:private field-alpha 0.72)
 
 (defn- lerp [a b t] (+ a (* (- b a) t)))
