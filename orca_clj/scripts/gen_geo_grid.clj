@@ -4,34 +4,33 @@
 ;;
 ;; Each stored sea cell now carries:
 ;;   - "m": CONTINUOUS depth in metres (+down), bilinearly sampled from the
-;;          high-res ETOPO_2022_v1_15s bathymetry. The runtime depth covariate
+;;          EMODnet Digital Bathymetry DTM 2024 (~115 m), resampled to 0.01 deg
+;;          into tmp_sim/bathy.json (hybrid: ETOPO fallback outside
+;;          lon -11..0 / lat 35..47). The runtime depth covariate
 ;;          (b_d1*z + b_d2*z2, z = standardize(log10(max(m,1)))) reads this.
 ;;   - "c": distance-to-coast ordinal (0:<=2nm 1:<=5nm 2:<=10nm 3:>10nm).
 ;; The old "d" (4-bin depth ordinal) has been DROPPED: continuous "m" supersedes
 ;; it, and the depth-ord beta was already excluded from the attr multiplier as a
 ;; location proxy (see POSTERIOR_SCHEMA.md). The land/sea mask still uses the
 ;; coarse `tmp_geo/bathy.csv` average (depth>0) so the set of stored cells is
-;; unchanged; only the per-cell depth VALUE comes from the finer ETOPO grid.
+;; unchanged; only the per-cell depth VALUE comes from the finer grid.
 ;;
 ;; Inputs (plain text / JSON only):
 ;;   - tmp_geo/bathy.csv     coarse ETOPO altitude CSV (land/sea mask only)
-;;   - tmp_sim/bathy.json    high-res ETOPO_2022_v1_15s depth grid (continuous m).
-;;       Built by route-planner/tmp_sim/depth_probe.clj from five 5-deg ERDDAP
-;;       griddap bands (stride 12, ~0.05deg), concatenated over 25-50N, 20W-5E:
-;;         https://coastwatch.pfeg.noaa.gov/erddap/griddap/ETOPO_2022_v1_15s.csv?z[(25.0):12:(30.0)][(-20.0):12:(5.0)]
-;;         https://coastwatch.pfeg.noaa.gov/erddap/griddap/ETOPO_2022_v1_15s.csv?z[(30.0):12:(35.0)][(-20.0):12:(5.0)]
-;;         https://coastwatch.pfeg.noaa.gov/erddap/griddap/ETOPO_2022_v1_15s.csv?z[(35.0):12:(40.0)][(-20.0):12:(5.0)]
-;;         https://coastwatch.pfeg.noaa.gov/erddap/griddap/ETOPO_2022_v1_15s.csv?z[(40.0):12:(45.0)][(-20.0):12:(5.0)]
-;;         https://coastwatch.pfeg.noaa.gov/erddap/griddap/ETOPO_2022_v1_15s.csv?z[(45.0):12:(50.0)][(-20.0):12:(5.0)]
-;;       (z = altitude +up; depth = -z.)
+;;   - tmp_sim/bathy.json    high-res depth grid (continuous m), now a HYBRID at
+;;       0.01 deg over 25-50N, 20W-5E: EMODnet Digital Bathymetry DTM 2024
+;;       (~115 m native) resampled (bilinear) inside lon -11..0 / lat 35..47,
+;;       with the previous ETOPO_2022_v1_15s grid as the fallback OUTSIDE that
+;;       EMODnet footprint. (EMODnet ELEVATION is +up; depth = -elevation.)
 ;;   - tmp_geo/ne_50m_coastline.geojson   Natural Earth coastline (distance-to-coast)
 ;; Output:
 ;;   - route-planner/geo_grid.json
 
 (ns gen-geo-grid
-  (:require [clojure.string :as str]
-            [clojure.java.io :as io]
-            [cheshire.core :as json]))
+  (:require
+   [cheshire.core :as json]
+   [clojure.java.io :as io]
+   [clojure.string :as str]))
 
 ;; ---------------------------------------------------------------------------
 ;; Config
@@ -210,14 +209,14 @@
    Stores plain Java arrays for fast iteration in the hot loop."
   [coast]
   (let [m (persistent!
-           (reduce (fn [m [lon lat]]
-                     (let [k (bkey (bidx lat) (bidx lon))]
-                       (assoc! m k (conj (get m k []) (double-array [lat lon])))))
-                   (transient {})
-                   coast))]
+            (reduce (fn [m [lon lat]]
+                      (let [k (bkey (bidx lat) (bidx lon))]
+                        (assoc! m k (conj (get m k []) (double-array [lat lon])))))
+                    (transient {})
+                    coast))]
     (persistent!
-     (reduce-kv (fn [mm k vs] (assoc! mm k (object-array vs)))
-                (transient {}) m))))
+      (reduce-kv (fn [mm k vs] (assoc! mm k (object-array vs)))
+                 (transient {}) m))))
 
 (defn nearest-coast-nm
   "Minimum nm from (lat,lon) to any coast vertex in the 3x3 bucket block.
