@@ -323,12 +323,22 @@
 ;; clipped to the real coastline (Natural Earth 10m land) by erasing land pixels.
 (def ^:private sub-step 6)
 
-;; FIXED display domain for the colour ramp (intensity = sigmoid(D+S)·daylight).
-;; Quiet offshore water sits ≈0.02–0.05 and hotspots reach ≈0.15+, so we clamp the
-;; intensity to [risk-lo, risk-hi] and map it across the full green→yellow→red ramp.
-;; This is a fixed domain (NOT per-frame normalized) so the field reads as a field.
-(def ^:private risk-lo 0.02)
-(def ^:private risk-hi 0.16)
+;; FIXED, GLOBAL display domain for the colour ramp. The per-cell intensity is
+;; count->prob(scale·RR·static-mult·d-scalar) (~0.1145 ceiling). After the model
+;; recalibration the field tops out ~8× lower than before, so the domain is sized
+;; from the MEASURED field distribution (tmp_sim/heatmap_domain.js, over all sea
+;; cells at the default/reference vessel + default month):
+;;   p50≈0.0014  p90≈0.017  p98≈0.049  p99≈0.064  max≈0.091.
+;; risk-lo = a small floor just above the quiet-water background (p50–p70 sit at
+;; ~0.001–0.005) so open water reads green; risk-hi ≈ the default field's ~p98 with
+;; a little headroom (set at 0.06, above p98≈0.049) so the default hotspot reads
+;; clearly orange→red yet a higher-risk vessel / peak season (which push hotspots
+;; toward ~0.09–0.11, near the count->prob ceiling) can still drive further into the
+;; red without the default view instantly clipping. This domain is INTENTIONALLY
+;; FIXED and GLOBAL — NOT per-frame/per-selection normalized — so a given intensity
+;; always maps to the same colour regardless of vessel/month/depth/base_rate.
+(def ^:private risk-lo 0.005)
+(def ^:private risk-hi 0.06)
 (def ^:private field-alpha 0.55)
 
 (defn- lerp [a b t] (+ a (* (- b a) t)))
