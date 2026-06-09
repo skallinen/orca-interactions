@@ -119,7 +119,7 @@ This project produces its data artifacts and gates it:
 | Artifact | What it is |
 |----------|------------|
 | `route-planner/posterior_planner.json` | The `presence-effort-seasonal` model: 500 draws of an `attr` block (relative vessel effects) and a `spatial` block (occupancy field + seasonal drift + a regularized log-depth covariate `b_d1`/`b_d2`). Schema in `route-planner/data/POSTERIOR_SCHEMA.md` |
-| `route-planner/geo_grid.json`          | Per sea cell: `m` = continuous ETOPO seafloor depth (m, +down) for the depth covariate, `c` = distance-to-coast ordinal. 34,933 cells over 25-50°N, 20°W-5°E at 0.1° (the old `d` depth-ordinal was dropped) |
+| `route-planner/geo_grid.json`          | Per sea cell: `m` = continuous EMODnet DTM 2024 seafloor depth (m, +down; see Data sources) for the depth covariate, `c` = distance-to-coast ordinal. 34,933 cells over 25-50°N, 20°W-5°E at 0.1° (the old `d` depth-ordinal was dropped) |
 | `route-planner/data/*`                 | Data-prep artifacts: `harbor_coords.edn`, `planner_dataset.edn`, `effort_grid.json`, `background_sample.edn` |
 
 | Source | What it does |
@@ -147,10 +147,34 @@ two logistic models combined at runtime:
   (ecology-fixed sinusoid, peak-north in late summer), **plus a regularized
   continuous log-depth covariate** `b_d1*z + b_d2*z2`
   (`z = standardize(log10(max(depth_m,1)))`, priors `N(0,0.5)`): the fit returns
-  `b_d1~+1.3`, `b_d2~-1.6`, i.e. a peaked shelf/slope preference with an abyssal
-  taper, beyond what location alone explains (ΔAIC ~ +42-54 in the prior probe).
-  Both terms are background-centered and the per-draw `Z` normalizes the combined
-  predictor, so `RR` is mean ~1 over sailed waters.
+  `b_d1 = +1.205`, `b_d2 = −1.661`, i.e. a peaked shelf/slope preference with an
+  abyssal taper (peak at log10(depth)≈2.49, ~310 m), beyond what location alone
+  explains. Both terms are background-centered and the per-draw `Z` normalizes
+  the combined predictor, so `RR` is mean ~1 over sailed waters.
+
+### Data sources
+
+- **Bathymetry / depth covariate: EMODnet Digital Bathymetry (DTM 2024)**,
+  ~115 m native resolution, CC-BY 4.0. Resampled to a 0.01° (~1.1 km) **hybrid**
+  grid into `tmp_sim/bathy.json` (EMODnet inside lon −11..0 / lat 35..47; ETOPO
+  fallback outside that box, since the fit footprint is wider than the EMODnet
+  data box) and bilinearly sampled for both the fit depth covariate and the
+  per-cell `geo_grid.json` `m` depths. This is a 0.01° gridded resample, **not**
+  literal 115 m point-sampling. Standardization constants: `logdepth_mean` =
+  2.121773, `logdepth_sd` = 1.016621, `z_bg_mean` = −0.003733, `z2_bg_mean` =
+  1.051791. Recovery re-validated on the new geometry (b_d1/b_d2 covered, z*
+  bracketed, 0 divergences, two-arm PASS; surface corr 0.869, a benign near-miss
+  on the 0.90 gate).
+
+  Attribution: *Bathymetry derived from EMODnet Digital Bathymetry (DTM 2024),
+  EMODnet Bathymetry Consortium, CC-BY 4.0.*
+
+  **Honesty caveat:** the runtime `geo_grid` is still 0.1° (~11 km), so even with
+  EMODnet values it cannot resolve a tight ~20 m nearshore contour — that needs
+  the optional finer-grid refinement or a separate vector-contour overlay, a
+  separate workstream (out of scope). The upgrade delivers a finer depth
+  covariate for the fit and more accurate per-cell grid depths, not a literal
+  20 m contour.
 
 This replaces the earlier presence/**background** smoother, whose uniform
 pseudo-absences produced a ~13-logit hotspot and a runaway 100% risk for any

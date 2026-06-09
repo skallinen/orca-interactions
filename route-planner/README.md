@@ -31,13 +31,34 @@ The headless tests use the JDK `SimpleFileServer` instead
 | File | What it is |
 |------|------------|
 | `posterior_planner.json` | The `presence-effort-seasonal` model: 500 draws of an `attr` block (relative vessel effects) and a `spatial` block (occupancy field + seasonal drift). Schema documented in `data/POSTERIOR_SCHEMA.md`. |
-| `geo_grid.json`          | Depth and distance ordinals for 34,933 sea cells over 25-50°N, 20°W-5°E at 0.1°. |
+| `geo_grid.json`          | Per-cell continuous depth (`m`, metres +down) and distance ordinal for 34,933 sea cells over 25-50°N, 20°W-5°E at 0.1°. Depths are from EMODnet DTM 2024 (see Data sources). |
 | `data/*`                 | Data-prep inputs to the fit: geocoded harbors, the prepared report dataset, the sailing-effort grid, and the effort-weighted background sample. |
 | `../orca_reportlist.json`| The incident report list (repo root), used for the historical-incident heatmap and the spatial term's incident locations. |
 
 These files are produced by the `orca_clj` tooling project
 (`src/orca/planner_fit.clj`, `stan/attr_logit.stan`, `stan/spatial.stan`, and the
 `scripts/` Babashka generators).
+
+## Data sources
+
+- **Bathymetry / depth covariate: EMODnet Digital Bathymetry (DTM 2024)**,
+  ~115 m native resolution, CC-BY 4.0. The depth covariate for the spatial fit
+  and the per-cell grid depths are derived from EMODnet, resampled to a 0.01°
+  (~1.1 km) **hybrid** grid (EMODnet inside lon −11..0 / lat 35..47; ETOPO
+  fallback outside that box, since the fit footprint is wider than the EMODnet
+  data box). This is a 0.01° gridded resample, **not** literal 115 m
+  point-sampling.
+
+  Attribution: *Bathymetry derived from EMODnet Digital Bathymetry (DTM 2024),
+  EMODnet Bathymetry Consortium, CC-BY 4.0.* (also shown in the in-app map
+  credit).
+
+  **Honesty caveat:** the runtime `geo_grid` is still 0.1° (~11 km), so even
+  with EMODnet values it cannot draw a tight ~20 m nearshore contour. What the
+  upgrade delivers is (a) a materially finer depth covariate for the fit and
+  (b) more accurate per-cell grid `m` depths. A literal ~20 m contour needs the
+  optional finer-grid refinement or a separate vector-contour overlay — a
+  separate workstream, out of scope here.
 
 ## Tests
 

@@ -6,7 +6,7 @@ models combined at runtime (see ROUTE_PLANNER_PLAN.md I2.5/I2.6).
 ## Top level
 - `model`: "presence-effort-seasonal"
 - `n_draws`: 500 posterior draws.
-- `base_rate_default`: 0.00358 (P of >=1 interaction over `ref_nm_default` nm at RR=1, attr_mult=1).
+- `base_rate_default`: 0.0036311 (P of >=1 interaction over `ref_nm_default` nm at RR=1, attr_mult=1).
   **REFERENCE-ROUTE anchored:** calibrated so a fixed W-Portugal->Gibraltar
   reference passage (the smoke-test `wpg-route`, reference vessel, doy=232) reads ~2.5%.
   RE-ANCHORED from 0.008 when the continuous-depth covariate was added on the spatial
@@ -34,24 +34,33 @@ models combined at runtime (see ROUTE_PLANNER_PLAN.md I2.5/I2.6).
 
 ## spatial (Part B: seasonally-drifting occupancy field + continuous depth)
 - `metric`: haversine_km. `lengthscale_km`: 150.0.
-- `centers`: 84 RBF center [lat,lon] pairs. `n_basis`: 84.
-- `col_means`: length-84 background column means (subtract from raw basis).
+- `centers`: 39 RBF center [lat,lon] pairs (constrained to ≤1500 m shelf/slope
+  on the EMODnet refit). `n_basis`: 39.
+- `col_means`: length-39 background column means (subtract from raw basis).
 - `drift`: {a_lat, phi, a_lon, period}; mu_lat(doy)=a_lat*sin(2pi(doy-phi)/period), mu_lon=a_lon.
 - `depth`: continuous **log-depth covariate** (regularized; replaces the old
-  `depth_ord` location-proxy). Depth_m is the ETOPO_2022_v1_15s seafloor depth
-  (metres, +down) bilinearly sampled from `tmp_sim/bathy.json`; the runtime reads
-  per-cell depth from `geo_grid.json` key `"m"`.
-  - `source`: "ETOPO_2022_v1_15s (bathy.json, +down m)".
+  `depth_ord` location-proxy). Depth_m is the EMODnet Digital Bathymetry
+  DTM 2024 (~115 m native resolution) seafloor depth (metres, +down),
+  resampled to a 0.01° (~1.1 km) HYBRID grid and bilinearly sampled from
+  `tmp_sim/bathy.json` (EMODnet inside lon −11..0 / lat 35..47; ETOPO fallback
+  outside that box, since the fit footprint is wider than the EMODnet box). The
+  runtime reads per-cell depth from `geo_grid.json` key `"m"`. NOTE: this is a
+  0.01° GRIDDED resample of EMODnet, NOT literal 115 m point-sampling.
+  - `source`: "EMODnet DTM 2024 (~115 m), 0.01° hybrid resample (bathy.json,
+    +down m); ETOPO fallback outside lon −11..0 / lat 35..47".
   - `logdepth_mean`, `logdepth_sd`: standardizers for z=(log10(max(depth_m,1)) -
-    logdepth_mean)/logdepth_sd, computed over the COMBINED 216 presences + 3000
-    background (same convention as the attr ordinals). (~2.129 / ~0.998.)
-  - `z_bg_mean`, `z2_bg_mean`: BACKGROUND means of z and z^2 (~ -0.003 / ~1.050),
-    the depth-side analogue of `col_means` — subtract so the depth term is
-    background-centered (mean ~0 over sailed waters).
+    logdepth_mean)/logdepth_sd, computed over the COMBINED presences +
+    background (same convention as the attr ordinals).
+    (logdepth_mean = 2.121773, logdepth_sd = 1.016621.)
+  - `z_bg_mean`, `z2_bg_mean`: BACKGROUND means of z and z^2
+    (z_bg_mean = −0.003733, z2_bg_mean = 1.051791), the depth-side analogue of
+    `col_means` — subtract so the depth term is background-centered (mean ~0
+    over sailed waters).
   - The shape is **PEAKED** (shelf/slope preference with abyssal taper): the
-    fitted coefficients are b_d1 ~ +1.32 (SD 0.16), b_d2 ~ -1.61 (SD 0.17), each
-    under a regularizing Normal(0,0.5) prior. b_d2 < 0 => quadratic peak.
-- `draws`: 500 of {w: length-84, Z: per-draw normalizer (now INCLUDES the
+    fitted coefficients are b_d1 = +1.205, b_d2 = −1.661, each under a
+    regularizing Normal(0,0.5) prior. b_d2 < 0 => quadratic peak, at
+    log10(depth)≈2.49 (~310 m).
+- `draws`: 500 of {w: length-39, Z: per-draw normalizer (now INCLUDES the
   centered depth term), b0: fit intercept (unused at runtime), b_d1, b_d2:
   per-draw depth coefficients}.
 
@@ -90,7 +99,7 @@ hazard_per_nm_d = h0 * RR_d * attr_mult_d
 ; and lambda<<Lmax, so short legs / open water are unchanged; long hotspot routes
 ; settle to a defensible single-digit/low-double-digit value instead of certainty.
 ; pct over d. Reference profile under the depth-aware calibration (base_rate
-; 0.00358, shelf/slope-constrained 39-center field): short hop ~0.3%,
+; 0.0036311, shelf/slope-constrained 39-center field): short hop ~0.3%,
 ; W-Port->Gib ~2.5%, long circumnavigation ~6.1% (> WPG), 438-passage
 ; p50 ~0.2% / p95 ~1.4% / max ~3.1%.
 ```
