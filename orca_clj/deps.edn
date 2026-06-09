@@ -41,4 +41,9 @@
   ;;   clojure -X:app-smoke
   :app-smoke {:extra-paths ["test"]
               :extra-deps {com.microsoft.playwright/playwright {:mvn/version "1.60.0"}}
-              :exec-fn orca.planner-app-smoke/run}}}
+              :exec-fn orca.planner-app-smoke/run}
+  ;; Render + screenshot + pixel-histogram of the live-risk heatmap:
+  ;;   clojure -X:heatmap-shot :tag '"before"'
+  :heatmap-shot {:extra-paths ["test"]
+                 :extra-deps {com.microsoft.playwright/playwright {:mvn/version "1.60.0"}}
+                 :exec-fn orca.heatmap-shot/run}}}

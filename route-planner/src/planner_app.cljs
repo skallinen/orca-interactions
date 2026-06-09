@@ -328,7 +328,7 @@
 ;; recalibration the field tops out ~8× lower than before, so the domain is sized
 ;; from the MEASURED field distribution (tmp_sim/heatmap_domain.js, over all sea
 ;; cells at the default/reference vessel + default month):
-;;   p50≈0.0014  p90≈0.017  p98≈0.049  p99≈0.064  max≈0.091.
+;;   p50≈0.0014  p80≈0.006  p90≈0.017  p95≈0.030  p98≈0.049  p99≈0.064  max≈0.091.
 ;; risk-lo = a small floor just above the quiet-water background (p50–p70 sit at
 ;; ~0.001–0.005) so open water reads green; risk-hi ≈ the default field's ~p98 with
 ;; a little headroom (set at 0.06, above p98≈0.049) so the default hotspot reads
@@ -337,9 +337,22 @@
 ;; red without the default view instantly clipping. This domain is INTENTIONALLY
 ;; FIXED and GLOBAL — NOT per-frame/per-selection normalized — so a given intensity
 ;; always maps to the same colour regardless of vessel/month/depth/base_rate.
-(def ^:private risk-lo 0.005)
+;;
+;; FIXED NONLINEAR (gamma) RAMP — why: the field is heavily RIGHT-SKEWED, so a
+;; LINEAR normalize t=(I-lo)/(hi-lo) leaves nearly everything green (p90≈0.017 maps
+;; to only t≈0.22) and the field reads faint, with just a pinprick hotspot coloured.
+;; We instead apply a FIXED gamma lift t' = t^risk-gamma (risk-gamma<1, like a sqrt)
+;; BEFORE the colour ramp. This is still a fixed, selection-INDEPENDENT function of
+;; the per-cell intensity — the SAME intensity always yields the SAME colour — it
+;; just re-curves the *display* so low-but-nonzero cells gain colour. With
+;; risk-gamma=0.4: p90 (t≈0.22) → t'≈0.55 (clear yellow→orange), p95 (t≈0.45) →
+;; t'≈0.72 (orange), p98 (t≈0.80) → t'≈0.91 (red), while the p50 background still
+;; sits at/below the floor and reads green. field-alpha is raised so the colours sit
+;; strongly over the dark basemap instead of washing out.
+(def ^:private risk-lo 0.004)
 (def ^:private risk-hi 0.06)
-(def ^:private field-alpha 0.55)
+(def ^:private risk-gamma 0.4)
+(def ^:private field-alpha 0.72)
 
 (defn- lerp [a b t] (+ a (* (- b a) t)))
 
@@ -359,11 +372,15 @@
        (js/Math.round (lerp 102.0 70.0 u))])))
 
 (defn- intensity->rgba
-  "CSS rgba() fill string for a raw intensity on the fixed [risk-lo,risk-hi] domain."
+  "CSS rgba() fill string for a raw intensity on the fixed [risk-lo,risk-hi] domain.
+   t is normalized on the fixed global domain then gamma-lifted (t^risk-gamma,
+   risk-gamma<1) to counter the field's right-skew — a fixed, selection-independent
+   transform, so the SAME intensity always maps to the SAME colour."
   [intensity]
-  (let [t (-> (/ (- intensity risk-lo) (- risk-hi risk-lo))
-              (max 0.0) (min 1.0))
-        [r g b] (ramp-rgb t)]
+  (let [t  (-> (/ (- intensity risk-lo) (- risk-hi risk-lo))
+               (max 0.0) (min 1.0))
+        t' (js/Math.pow t risk-gamma)
+        [r g b] (ramp-rgb t')]
     (str "rgba(" r "," g "," b "," field-alpha ")")))
 
 (defn- recompute-cell-intensities!
@@ -1013,6 +1030,11 @@
              ;; getZoom right after and needs the new value, not a deferred one.
              :setZoom        (fn [z] (when-let [m @map-ref]
                                        (.setZoom m z #js {:animate false}))
+                               (when @map-ref (.getZoom @map-ref)))
+             :setView        (fn [lat lon z]
+                               (when-let [m @map-ref]
+                                 (.setView m #js [lat lon] z
+                                           #js {:animate false}))
                                (when @map-ref (.getZoom @map-ref)))}))
 
 ;; ── View ─────────────────────────────────────────────────────────────────────
