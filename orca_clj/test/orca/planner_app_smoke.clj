@@ -33,8 +33,8 @@
   [dir port]
   (let [root (-> (Path/of dir (into-array String [])) .toAbsolutePath .normalize)
         srv  (SimpleFileServer/createFileServer
-              (InetSocketAddress. "127.0.0.1" (int port))
-              root SimpleFileServer$OutputLevel/NONE)]
+               (InetSocketAddress. "127.0.0.1" (int port))
+               root SimpleFileServer$OutputLevel/NONE)]
     (.start srv)
     srv))
 
@@ -70,26 +70,26 @@
    asserting a heat canvas with width·height > 0 exists."
   [{:keys [page]}]
   (let [res (.evaluate
-             page
-             (str "() => {"
-                  " const cs = Array.from(document.querySelectorAll("
-                  "   '.leaflet-heatmap-layer, .leaflet-pane canvas'));"
-                  " const heat = cs.filter(c => c.tagName === 'CANVAS'"
-                  "   && c.width > 0 && c.height > 0);"
-                  " if (heat.length === 0) return {found:false};"
-                  " for (const c of heat) {"
-                  "   try {"
-                  "     const d = c.getContext('2d')"
-                  "       .getImageData(0,0,c.width,c.height).data;"
-                  "     if (Array.prototype.some.call(d, x => x !== 0))"
-                  "       return {found:true, painted:true, n:heat.length};"
-                  "   } catch (e) {"
-                  "     return {found:true, painted:null, tainted:true,"
-                  "             n:heat.length};"
-                  "   }"
-                  " }"
-                  " return {found:true, painted:false, n:heat.length};"
-                  "}"))
+              page
+              (str "() => {"
+                   " const cs = Array.from(document.querySelectorAll("
+                   "   '.leaflet-heatmap-layer, .leaflet-pane canvas'));"
+                   " const heat = cs.filter(c => c.tagName === 'CANVAS'"
+                   "   && c.width > 0 && c.height > 0);"
+                   " if (heat.length === 0) return {found:false};"
+                   " for (const c of heat) {"
+                   "   try {"
+                   "     const d = c.getContext('2d')"
+                   "       .getImageData(0,0,c.width,c.height).data;"
+                   "     if (Array.prototype.some.call(d, x => x !== 0))"
+                   "       return {found:true, painted:true, n:heat.length};"
+                   "   } catch (e) {"
+                   "     return {found:true, painted:null, tainted:true,"
+                   "             n:heat.length};"
+                   "   }"
+                   " }"
+                   " return {found:true, painted:false, n:heat.length};"
+                   "}"))
         found?   (.get ^java.util.Map res "found")
         painted  (.get ^java.util.Map res "painted")
         tainted  (.get ^java.util.Map res "tainted")
@@ -120,10 +120,10 @@
   "parseFloat of the textContent of element #id (strips a trailing %)."
   [page id]
   (num-of
-   (.evaluate page
-              (str "() => { const e=document.getElementById('" id "');"
-                   " if(!e) return null; const v=parseFloat(e.textContent);"
-                   " return isNaN(v) ? null : v; }"))))
+    (.evaluate page
+               (str "() => { const e=document.getElementById('" id "');"
+                    " if(!e) return null; const v=parseFloat(e.textContent);"
+                    " return isNaN(v) ? null : v; }"))))
 
 (defn- settle [page] (.waitForTimeout page 350))
 
@@ -231,24 +231,24 @@
    of the live-risk heat canvas — the same Leaflet.heat canvas Check #3 reads.
    Returns {sig, tainted} so the check can fall back if pixel reads are blocked."
   (str
-   "() => {"
-   " const cs = Array.from(document.querySelectorAll("
-   "   '.leaflet-heatmap-layer, .leaflet-pane canvas'))"
-   "   .filter(c => c.tagName === 'CANVAS' && c.width > 0 && c.height > 0);"
-   " if (cs.length === 0) return {sig:0, tainted:false, found:false};"
-   " try {"
-   "   let sig = 0;"
-   "   for (const c of cs) {"
-   "     const d = c.getContext('2d').getImageData(0,0,c.width,c.height).data;"
-   "     for (let i = 0; i < d.length; i += 4) {"
-   "       sig = (sig + d[i] + d[i+1] + d[i+2] + d[i+3]) >>> 0;"
-   "     }"
-   "   }"
-   "   return {sig:sig, tainted:false, found:true};"
-   " } catch (e) {"
-   "   return {sig:0, tainted:true, found:true};"
-   " }"
-   "}"))
+    "() => {"
+    " const cs = Array.from(document.querySelectorAll("
+    "   '.leaflet-heatmap-layer, .leaflet-pane canvas'))"
+    "   .filter(c => c.tagName === 'CANVAS' && c.width > 0 && c.height > 0);"
+    " if (cs.length === 0) return {sig:0, tainted:false, found:false};"
+    " try {"
+    "   let sig = 0;"
+    "   for (const c of cs) {"
+    "     const d = c.getContext('2d').getImageData(0,0,c.width,c.height).data;"
+    "     for (let i = 0; i < d.length; i += 4) {"
+    "       sig = (sig + d[i] + d[i+1] + d[i+2] + d[i+3]) >>> 0;"
+    "     }"
+    "   }"
+    "   return {sig:sig, tainted:false, found:true};"
+    " } catch (e) {"
+    "   return {sig:0, tainted:true, found:true};"
+    " }"
+    "}"))
 
 (defn- heat-sig
   "Read the live-risk heat-canvas signature; returns {:sig long :tainted bool}."
@@ -298,9 +298,9 @@
   "Number of route tabs currently rendered (the .route-tab elements)."
   [page]
   (long
-   (num-of
-    (p-eval page
-            "() => document.querySelectorAll('.route-tab').length"))))
+    (num-of
+      (p-eval page
+              "() => document.querySelectorAll('.route-tab').length"))))
 
 (defn- check-add-route
   "Click #add-route-btn and assert the route-tab count grows to >=2 with no new
@@ -491,8 +491,8 @@
         perr0 (count @perrors)
         opacity (num-of (p-eval page "() => window.__planner.setRiskOpacity(0.3)"))
         has-slider? (p-eval
-                     page
-                     "() => !!document.getElementById('risk-opacity')")
+                      page
+                      "() => !!document.getElementById('risk-opacity')")
         no-new-errs? (and (= err0 (count (filterv #(= "error" (:type %)) @console)))
                           (= perr0 (count @perrors)))]
     (p-eval page "() => window.__planner.setRiskOpacity(1.0)")
@@ -527,11 +527,31 @@
   (lay-route! page [[36.0 -5.0] [37.0 -5.0]] 232)
   (let [nm  (num-of (p-eval page "() => window.__planner.routeDistance()"))
         dom (p-eval
-             page
-             "() => document.getElementById('route-distance').textContent")]
+              page
+              "() => document.getElementById('route-distance').textContent")]
     {:pass? (boolean (and nm (< (Math/abs (- nm 60.0)) 1.5)
                           dom (str/includes? (str dom) "nm")))
      :detail (str "routeDistance=" nm " #route-distance=" (pr-str dom))}))
+
+(defn- check-route-depth
+  "The route summary reports seafloor depth at the start/end waypoints and the
+   median over the sampled route points (the routeDepths hook + #route-depth
+   node). A leg from the shallow Gibraltar approaches to the deep open Atlantic
+   must yield finite start/end/median depths with end deeper than start."
+  [{:keys [page]}]
+  (lay-route! page [[36.0 -6.0] [36.0 -10.0]] 232)
+  (let [d   (p-eval page "() => window.__planner.routeDepths()")
+        st  (num-of (when d (.get ^java.util.Map d "start")))
+        en  (num-of (when d (.get ^java.util.Map d "end")))
+        med (num-of (when d (.get ^java.util.Map d "median")))
+        dom (p-eval
+              page
+              "() => document.getElementById('route-depth').textContent")]
+    {:pass? (boolean (and st en med (> en st)
+                          dom (str/includes? (str dom) "m")
+                          (str/includes? (str dom) "median")))
+     :detail (str "start=" st " end=" en " median=" med
+                  " #route-depth=" (pr-str dom))}))
 
 (def checks
   [{:label "no console/page errors" :check-fn check-no-errors}
@@ -556,6 +576,8 @@
     :check-fn check-render-resolution}
    {:label "#16 selected track shows distance in nm"
     :check-fn check-route-distance}
+   {:label "#16b route summary shows start/end/median seafloor depth"
+    :check-fn check-route-depth}
    {:label "#17 coastline land rings load (heatmap clip)"
     :check-fn check-coastline-clip}
    {:label "I2.2 delete + move (delete-readd + drag changes risk)"

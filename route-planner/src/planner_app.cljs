@@ -42,7 +42,7 @@
            :sea 0
            :daylight "Average"
            :doy 232
-           :base-rate 0.00315
+           :base-rate 0.00358
            :ref-nm 100
            :seg-step-nm 25}))
 
@@ -323,35 +323,42 @@
 ;; clipped to the real coastline (Natural Earth 10m land) by erasing land pixels.
 (def ^:private sub-step 6)
 
-;; FIXED, GLOBAL display domain for the colour ramp. The per-cell intensity is
-;; count->prob(scale·RR·static-mult·d-scalar) (~0.1145 ceiling). After the model
-;; recalibration the field tops out ~8× lower than before, so the domain is sized
-;; from the MEASURED field distribution (tmp_sim/heatmap_domain.js, over all sea
-;; cells at the default/reference vessel + default month):
-;;   p50≈0.0014  p80≈0.006  p90≈0.017  p95≈0.030  p98≈0.049  p99≈0.064  max≈0.091.
-;; risk-lo = a small floor just above the quiet-water background (p50–p70 sit at
-;; ~0.001–0.005) so open water reads green; risk-hi ≈ the default field's ~p98 with
-;; a little headroom (set at 0.06, above p98≈0.049) so the default hotspot reads
-;; clearly orange→red yet a higher-risk vessel / peak season (which push hotspots
-;; toward ~0.09–0.11, near the count->prob ceiling) can still drive further into the
-;; red without the default view instantly clipping. This domain is INTENTIONALLY
-;; FIXED and GLOBAL — NOT per-frame/per-selection normalized — so a given intensity
-;; always maps to the same colour regardless of vessel/month/depth/base_rate.
+;; FIXED, GLOBAL display domain for the colour ramp, read as an HONEST ABSOLUTE
+;; interaction probability. The per-cell intensity IS the absolute probability
+;; P(≥1 interaction) for a reference ~100 nm transit straight through the cell:
+;; intensity = count->prob(scale·RR·static-mult·d-scalar) (~0.1145 ceiling). So a
+;; cell rendered at intensity 0.03 means "~3% chance of an interaction over a
+;; 100 nm transit through here" — the colour is a direct probability read-out.
 ;;
-;; FIXED NONLINEAR (gamma) RAMP — why: the field is heavily RIGHT-SKEWED, so a
-;; LINEAR normalize t=(I-lo)/(hi-lo) leaves nearly everything green (p90≈0.017 maps
-;; to only t≈0.22) and the field reads faint, with just a pinprick hotspot coloured.
-;; We instead apply a FIXED gamma lift t' = t^risk-gamma (risk-gamma<1, like a sqrt)
-;; BEFORE the colour ramp. This is still a fixed, selection-INDEPENDENT function of
-;; the per-cell intensity — the SAME intensity always yields the SAME colour — it
-;; just re-curves the *display* so low-but-nonzero cells gain colour. With
-;; risk-gamma=0.5 (sqrt): p90 (t≈0.22) → t'≈0.47 (yellow), p95 (t≈0.45) →
-;; t'≈0.67 (yellow→orange), p98 (t≈0.80) → t'≈0.89 (red), while the p50 background
-;; still sits at/below the floor and reads green. field-alpha is raised so the colours
-;; sit strongly over the dark basemap instead of washing out.
-(def ^:private risk-lo 0.004)
-(def ^:private risk-hi 0.06)
-(def ^:private risk-gamma 0.5)
+;; The domain is sized from the MEASURED field on the RE-FIT posterior (39 RBF
+;; centers constrained to ≤1500 m shelf/slope, abyssal leak removed,
+;; base_rate_default=0.00358; tmp_sim/heatmap_diagnose_newfield.txt, over all
+;; 34 933 sea cells at the default/reference vessel + default month doy 232):
+;;   whole-map  p50≈0.0015 p80≈0.0060 p90≈0.0118 p95≈0.0188 p98≈0.0297
+;;              p99≈0.0403 max≈0.0676
+;;   the SIGNAL lives on the shelf/upper slope (50–1000 m): I_p90≈0.031, top
+;;   shelf cells ≈0.062; deep&far water (>2000 m, c=3) sits at I_p90≈0.0041.
+;; risk-lo = a floor just above the quiet-water background (deep&far p90≈0.004)
+;; so deep/open water reads GREEN; risk-hi ≈ the field's ~p98 (0.0297) with
+;; headroom (0.045) so the default shelf/slope hotspot reads clearly orange→red
+;; while a higher-risk vessel / peak season can push a touch further before the
+;; top of the ramp clips. This domain is INTENTIONALLY FIXED and GLOBAL — NOT
+;; per-frame/per-selection normalized — so a given probability always maps to the
+;; same colour regardless of vessel/month/depth/base_rate.
+;;
+;; LINEAR RAMP (risk-gamma = 1.0 — NO gamma lift). The previous field was tinted
+;; with a sqrt gamma (risk-gamma=0.5) to fight the old field's right-skew, but on
+;; the re-fit field that gamma OVER-WARMS quiet water: it pushed even a 0.75%-prob
+;; cell to yellow and tinted 3.9% of deep&far cells non-green. With a straight
+;; linear map t=(I-lo)/(hi-lo) the colour is an honest probability: the band edges
+;; are fixed probabilities — leave-green at I≈0.017 (~1.7%), full red at I≈0.032
+;; (~3.2%). On the measured field this leaves deep&far cells ~0.4% non-green while
+;; the shelf/slope hotspot still renders ~31% non-green / ~9% red, so the planning
+;; signal stays legible without washing the open water warm. field-alpha keeps the
+;; colours sitting strongly over the dark basemap.
+(def ^:private risk-lo 0.008)
+(def ^:private risk-hi 0.045)
+(def ^:private risk-gamma 1.0)
 (def ^:private field-alpha 0.72)
 
 (defn- lerp [a b t] (+ a (* (- b a) t)))
@@ -372,10 +379,11 @@
        (js/Math.round (lerp 102.0 70.0 u))])))
 
 (defn- intensity->rgba
-  "CSS rgba() fill string for a raw intensity on the fixed [risk-lo,risk-hi] domain.
-   t is normalized on the fixed global domain then gamma-lifted (t^risk-gamma,
-   risk-gamma<1) to counter the field's right-skew — a fixed, selection-independent
-   transform, so the SAME intensity always maps to the SAME colour."
+  "CSS rgba() fill string for an absolute interaction-probability intensity on the
+   fixed [risk-lo,risk-hi] domain. t is the LINEAR normalize (risk-gamma=1.0, an
+   identity pow) — a fixed, selection-independent transform, so the SAME
+   probability always maps to the SAME colour. (risk-gamma is retained so the ramp
+   can be re-curved later if needed without touching the call site.)"
   [intensity]
   (let [t  (-> (/ (- intensity risk-lo) (- risk-hi risk-lo))
                (max 0.0) (min 1.0))
@@ -708,6 +716,30 @@
                :a [alat alon] :b [blat blon]}))))
       (partition 2 1 pts)))))
 
+(defn- median-of
+  "Median of a non-empty seq of numbers (sort; middle, or mean of two middles)."
+  [xs]
+  (let [v (vec (sort xs))
+        n (count v)
+        mid (quot n 2)]
+    (if (odd? n)
+      (nth v mid)
+      (/ (+ (nth v (dec mid)) (nth v mid)) 2.0))))
+
+(defn route-depths
+  "Seafloor depths for a route: {:start :end :median} in metres (+down), or nil
+   when there is no route (<2 waypoints). :start/:end use geo-lookup at the first
+   and last waypoints; :median is the median :depth-m over the same sampled
+   sub-segment midpoints that feed the per-segment risk (so it reflects the whole
+   passage). `segs` is the output of build-segments for `pts`."
+  [pts segs]
+  (when (and (>= (count pts) 2) (seq segs))
+    (let [[slat slon] (first pts)
+          [elat elon] (last pts)]
+      {:start  (:m (geo-lookup slat slon))
+       :end    (:m (geo-lookup elat elon))
+       :median (median-of (map :depth-m segs))})))
+
 (defn- clear-route-graphics!
   "Remove the active route's waypoint markers and segment polylines."
   []
@@ -831,7 +863,9 @@
                                          segs)
                                    doy base ref)]
         (reset! segment-summaries summaries)
-        (reset! route-summary (assoc route :nm (reduce + 0.0 (map :nm segs))))
+        (reset! route-summary (assoc route
+                                     :nm (reduce + 0.0 (map :nm segs))
+                                     :depths (route-depths pts segs)))
         (draw-segments! segs summaries))
       (do (reset! segment-summaries [])
           (reset! route-summary nil))))
@@ -1022,6 +1056,11 @@
                                       #js {:lo (:lo89 @route-summary)
                                            :hi (:hi89 @route-summary)}
                                       nil))
+             :routeDepths    (fn [] (if-let [d (:depths @route-summary)]
+                                      #js {:start (:start d)
+                                           :end (:end d)
+                                           :median (:median d)}
+                                      nil))
              :addRoute       (fn [] (add-route!))
              :routeCount     (fn [] (count @routes))
              :selectRoute    (fn [i] (select-route! i)
@@ -1080,12 +1119,50 @@
                            (set-risk-opacity!
                             (js/parseFloat (.. e -target -value))))}]]))
 
+(defn- risk-legend
+  "Honest absolute-probability legend for the live-risk heatmap. The colour ramp
+   is a FIXED LINEAR map of the per-cell probability P(≥1 interaction over a
+   ~100 nm transit through the cell) across the [risk-lo,risk-hi] domain. The
+   band edges below are the actual probabilities those colours encode: green
+   below ~1.5%, yellow ~1.5–3%, red above ~3% (risk-lo=0.008, risk-hi=0.045,
+   linear). The ramp colours match `ramp-rgb` (green 45,198,83 → yellow
+   255,209,102 → red 230,57,70)."
+  []
+  [:div.ctrl-row.ctrl-slider {:style {:margin-top "6px"}}
+   [:div.ctrl-slider-head
+    [:span.ctrl-label "Heatmap risk scale"]
+    [:span.ctrl-value.mono "P(≥1) / 100 nm"]]
+   [:div {:style {:height "10px"
+                  :border-radius "3px"
+                  :background (str "linear-gradient(to right,"
+                                   "rgb(45,198,83),"
+                                   "rgb(255,209,102),"
+                                   "rgb(230,57,70))")}}]
+   [:div {:style {:display "flex"
+                  :justify-content "space-between"
+                  :font-size "0.7rem"
+                  :margin-top "3px"
+                  :font-family "JetBrains Mono, monospace"
+                  :color "var(--text-dim)"}}
+    [:span "<1.5%"]
+    [:span "~1.5–3%"]
+    [:span ">3%"]]
+   [:div {:style {:display "flex"
+                  :justify-content "space-between"
+                  :font-size "0.68rem"
+                  :margin-top "1px"
+                  :color "var(--text-dim)"}}
+    [:span "deep / open"]
+    [:span "shelf edge"]
+    [:span "hotspot"]]])
+
 (defn layer-controls []
   [:div
    (for [[k label] layer-rows]
      ^{:key (name k)}
      [layer-toggle k label])
-   [risk-opacity-row]])
+   [risk-opacity-row]
+   [risk-legend]])
 
 (defn- pct-str [x]
   (str (.toFixed (* 100.0 x) 2) "%"))
@@ -1094,6 +1171,16 @@
   "Format a nautical-mile distance: 1 decimal under 100 nm, whole nm above."
   [nm]
   (str (.toFixed nm (if (< nm 100) 1 0)) " nm"))
+
+(defn- depth-str
+  "Format a seafloor depth in metres: round to nearest 5 m under 100 m, nearest
+   10 m above; thousands separated by commas; trailing ' m'. nil → '—'."
+  [m]
+  (if (nil? m)
+    "—"
+    (let [step (if (< (js/Math.abs m) 100) 5 10)
+          r    (* step (js/Math.round (/ m step)))]
+      (str (.toLocaleString r "en-US") " m"))))
 
 ;; ── Vessel / conditions / model controls (Phase 7.1) ─────────────────────────
 
@@ -1270,7 +1357,14 @@
      [:div.num.mono "89% CI: "
       [:span#ci-lo (if route (pct-str (:lo89 route)) "—")]
       " – "
-      [:span#ci-hi (if route (pct-str (:hi89 route)) "—")]]]))
+      [:span#ci-hi (if route (pct-str (:hi89 route)) "—")]]
+     (let [d (:depths route)]
+       [:div.num.mono {:id "route-depth"} "Depth — start: "
+        [:span#depth-start (depth-str (:start d))]
+        " · end: "
+        [:span#depth-end (depth-str (:end d))]
+        " · median: "
+        [:span#depth-median (depth-str (:median d))]])]))
 
 (defn route-tabs
   "Route Variants tab strip: one tab per route with a delete control, plus an

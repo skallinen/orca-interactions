@@ -6,7 +6,7 @@ models combined at runtime (see ROUTE_PLANNER_PLAN.md I2.5/I2.6).
 ## Top level
 - `model`: "presence-effort-seasonal"
 - `n_draws`: 500 posterior draws.
-- `base_rate_default`: 0.00315 (P of >=1 interaction over `ref_nm_default` nm at RR=1, attr_mult=1).
+- `base_rate_default`: 0.00358 (P of >=1 interaction over `ref_nm_default` nm at RR=1, attr_mult=1).
   **REFERENCE-ROUTE anchored:** calibrated so a fixed W-Portugal->Gibraltar
   reference passage (the smoke-test `wpg-route`, reference vessel, doy=232) reads ~2.5%.
   RE-ANCHORED from 0.008 when the continuous-depth covariate was added on the spatial
@@ -90,8 +90,9 @@ hazard_per_nm_d = h0 * RR_d * attr_mult_d
 ; and lambda<<Lmax, so short legs / open water are unchanged; long hotspot routes
 ; settle to a defensible single-digit/low-double-digit value instead of certainty.
 ; pct over d. Reference profile under the depth-aware calibration (base_rate
-; 0.00315): short hop ~0.2%, W-Port->Gib ~2.5%, long circumnavigation ~6.2%
-; (> WPG), 438-passage p50 ~0.2% / p95 ~1.3% / max ~4.1%.
+; 0.00358, shelf/slope-constrained 39-center field): short hop ~0.3%,
+; W-Port->Gib ~2.5%, long circumnavigation ~6.1% (> WPG), 438-passage
+; p50 ~0.2% / p95 ~1.4% / max ~3.1%.
 ```
 x_ref: ordinals at training mean (z=0), each categorical at its reference
 level, so the reference vessel has attr_mult=1.

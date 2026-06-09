@@ -53,7 +53,11 @@
 ;; into posterior_planner.json; keep it here so re-export does not revert the
 ;; absolute level. The continuous-depth covariate sharpened the shelf/slope
 ;; hotspots, so this anchor was RE-calibrated from 0.008 down to 0.00315.
-(def base-rate-default 0.00315)
+;; Re-fitting with RBF centers constrained to shelf/slope depths (<=1500 m) cut
+;; active centers 84->39 and removed the abyssal-field leak, lowering the
+;; overall field amplitude; this anchor was re-tuned UP from 0.00315 to
+;; 0.00358 to restore the reference route to ~2.5%.
+(def base-rate-default 0.00358)
 (def ref-nm-default 100.0)
 
 ;; Seasonal drift (ecology-fixed): mu_lat(doy) = a-lat * sin(2pi*(doy-phi)/365).
@@ -63,6 +67,18 @@
 (def center-spacing 2.0)        ; degrees between candidate RBF centers
 (def center-keep-deg 2.0)       ; keep centers within this of an incident/effort
 (def fit-seed 42)
+
+;; Max bathy depth (m, +down) at which an RBF center is ECOLOGICALLY ELIGIBLE.
+;; Leak diagnosis: ~50 of ~70 active centers sat in water >1000 m deep; high-
+;; weight centers at 2000-4800 m pushed f_rbf to ~2.8 over abyssal patches
+;; (RR~5.85 at 3615 m off NW Iberia), making deep open ocean read as high orca-
+;; interaction risk. These orcas are a shelf/upper-slope species, so the field
+;; must not float in the abyss. Data-driven cap from the 216 incident depths:
+;; median 140 m, p90 634 m, p95 1586 m (only ~6.5% of incidents fall >1000 m,
+;; a deep-water outlier tail). 1500 m covers the full shelf + upper/mid slope
+;; (well past p90) while excluding the abyssal-plain centers that caused the
+;; leak; the depth covariate then shapes preference WITHIN the eligible band.
+(def center-depth-cap-m 1500.0)
 
 ;; ── geometry ────────────────────────────────────────────────────────────────
 
@@ -347,6 +363,20 @@
                   (mapv #(+ lo (* % (double spacing))) (range (inc n)))))]
     (vec (for [la (steps lo-la hi-la) lo (steps lo-lo hi-lo)] [la lo]))))
 
+(defn depth-eligible-centers
+  "Keep only candidate centers whose bathy depth (m, +down) is <= `cap-m`.
+
+   Leak fix: orcas here are a shelf/upper-slope species, so an occupancy basis
+   function floating over the abyss has no ecological justification and was the
+   source of the deep-water RR leak (centers at 2000-4800 m pushing f_rbf high).
+   The cap (1500 m) is derived from the incident depth distribution; see
+   `center-depth-cap-m`. This runs alongside (not instead of) `prune-centers`."
+  [centers bathy cap-m]
+  (let [cap (double cap-m)]
+    (filterv (fn [[clat clon]]
+               (<= (sample-depth bathy (double clat) (double clon)) cap))
+             centers)))
+
 (defn prune-centers
   "Keep centers within `keep-deg` (planar) of any anchor [lat lon ...] point."
   [centers anchors keep-deg]
@@ -392,9 +422,14 @@
   (let [pres (incident-points)
         bg (background-points)
         anchors (concat pres bg)
+        bathy (load-bathy)
         cand (candidate-centers anchors center-spacing)
-        ;; keep centers near incidents OR high-effort (background) areas
-        centers (prune-centers cand anchors center-keep-deg)
+        ;; keep centers near incidents OR high-effort (background) areas, AND
+        ;; only on the shelf/upper-slope (depth <= cap): the abyssal centers
+        ;; were the source of the deep-water RR leak (see center-depth-cap-m).
+        centers (-> cand
+                    (prune-centers anchors center-keep-deg)
+                    (depth-eligible-centers bathy center-depth-cap-m))
         ell lengthscale-km
         pres-raw (mapv (fn [[la lo doy]] (basis-at centers ell la lo doy)) pres)
         bg-raw (mapv (fn [[la lo doy]] (basis-at centers ell la lo doy)) bg)
@@ -410,8 +445,7 @@
                             rows))
         bsp (into (center-rows pres-raw) (center-rows bg-raw))
         y (into (vec (repeat (count pres-raw) 1)) (vec (repeat n-bg 0)))
-        ;; ── depth covariate ──
-        bathy (load-bathy)
+        ;; ── depth covariate (reuses the bathy grid loaded above) ──
         pres-ld (mapv (fn [[la lo _]] (logdepth (sample-depth bathy la lo))) pres)
         bg-ld (mapv (fn [[la lo _]] (logdepth (sample-depth bathy la lo))) bg)
         all-ld (into pres-ld bg-ld)
